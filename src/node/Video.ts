@@ -1,0 +1,558 @@
+import Node from './Node'
+import { VideoProps } from '../format';
+import TextureCache from '../refresh/TextureCache';
+import { LayoutData } from '../refresh/layout';
+import { OBJECT_FIT, StyleUnit } from '../style/define';
+import { RefreshLevel } from '../refresh/level';
+import CanvasCache from '../refresh/CanvasCache';
+import { Options } from '../animation/AbstractAnimation';
+import TimeAnimation from '../animation/TimeAnimation';
+import config from '../config';
+// import {
+//   CacheGOP,
+//   SmartVideoDecoder,
+//   SmartVideoDecoderEvent,
+//   VideoAudioMeta,
+//   GOPState,
+// } from '../util/SmartVideoDecoder';
+import { GOPState, MbVideoDecoder, MbVideoDecoderEvent, VideoAudioMeta } from '../util/MbVideoDecoder';
+import inject from '../util/inject';
+import { color2rgbaStr } from '../style/color';
+import { canvasPolygon } from '../refresh/paint';
+
+class Video extends Node {
+  private _src: string;
+  isPure: boolean;
+  onMeta?: (o: VideoAudioMeta) => void;
+  onCanplay?: () => void;
+  onError?: (e: string) => void;
+  onWaiting?: () => void;
+  gainNode?: GainNode;
+  // private _decoder?: SmartVideoDecoder;
+  private _decoder?: MbVideoDecoder;
+  private _videoFrame?: VideoFrame;
+  private _currentTime: number;
+  private _metaData?: VideoAudioMeta;
+  private _volumn: number;
+  timeAnimation?: TimeAnimation;
+
+  constructor(props: VideoProps) {
+    super(props);
+    if (props.onMeta) {
+      // this.onMeta = props.onMeta;
+    }
+    if (props.onCanplay) {
+      this.onCanplay = props.onCanplay;
+    }
+    if (props.onError) {
+      this.onError = props.onError;
+    }
+    if (props.onWaiting) {
+      this.onWaiting = props.onWaiting;
+    }
+    this._currentTime = props.currentTime || 0;
+    this._volumn = Math.max(0, Math.min(1, props.volumn ?? 1));
+    this.isPure = true;
+    const src = (this._src = props.src || '');
+    if (src) {
+      this.contentLoading();
+      const mbVideoDecoder = this._decoder = new MbVideoDecoder(src);
+      mbVideoDecoder.on(MbVideoDecoderEvent.META, e => {
+        this._metaData = e;
+        // 自适应尺寸
+        if (this.isMounted) {
+          const { left, top, right, bottom, width, height } = this.style;
+          if ((left.u === StyleUnit.AUTO || right.u === StyleUnit.AUTO) && width.u === StyleUnit.AUTO
+            || (top.u === StyleUnit.AUTO || bottom.u === StyleUnit.AUTO) && height.u === StyleUnit.AUTO
+          ) {
+            this.refresh(RefreshLevel.REFLOW);
+          }
+        }
+        if (this.onMeta) {
+          this.onMeta(e);
+        }
+      });
+      mbVideoDecoder.on(MbVideoDecoderEvent.ERROR, e => {
+        inject.error(e);
+        if (this.onError) {
+          this.onError(e);
+        }
+      });
+      mbVideoDecoder.on(MbVideoDecoderEvent.CANPLAY, gop => {
+        const frame = mbVideoDecoder.getFrameByTime(this._currentTime * 1e-3);
+        this.videoFrame = frame;
+        this.contentLoaded();
+        if (this.onCanplay) {
+          this.onCanplay();
+        }
+      });
+      mbVideoDecoder.on([MbVideoDecoderEvent.CANPLAY, MbVideoDecoderEvent.AUDIO_BUFFER], gop => {
+        const root = this.root;
+        if (!root || !gop.audioBuffer) {
+          return;
+        }
+        const aniController = root.aniController;
+        const audioContext = root.audioContext;
+        const timeAnimation = this.timeAnimation;
+        if (timeAnimation && aniController && audioContext) {
+          if (aniController.playState === 'running') {
+            const audioBufferSourceNode = audioContext.createBufferSource();
+            audioBufferSourceNode.buffer = gop.audioBuffer;
+            // 可能在结束后点击从头播放，此时没有数据
+            if (!this.gainNode) {
+              this.gainNode = audioContext.createGain();
+              this.gainNode.gain.value = this.volumn;
+              this.gainNode.connect(audioContext.destination);
+            }
+            audioBufferSourceNode.connect(this.gainNode);
+            // 特殊情况，一般不可能，除非解码卡住了，等到播放这个区域后声音才完成
+            if (aniController.currentTime >= timeAnimation.delay + gop.timestamp * 1e3) {
+              audioBufferSourceNode.start(
+                0,
+                (aniController.currentTime - timeAnimation.delay) * 1e-3 + gop.timestamp,
+                gop.duration,
+              );
+            }
+            else {
+              const delay = timeAnimation.delay - aniController.currentTime;
+              audioBufferSourceNode.start(
+                audioContext.currentTime + delay * 1e-3 + gop.timestamp,
+                0,
+                gop.duration,
+              );
+            }
+          }
+        }
+      });
+      mbVideoDecoder.start(this._currentTime * 1e-3);
+      // const smartVideoDecoder = this._decoder = new SmartVideoDecoder(src);
+      // smartVideoDecoder.on(SmartVideoDecoderEvent.META, (e: VideoAudioMeta) => {
+      //   this._metaData = e;
+      //   // 自适应尺寸
+      //   if (this.isMounted) {
+      //     const { left, top, right, bottom, width, height } = this.style;
+      //     if ((left.u === StyleUnit.AUTO || right.u === StyleUnit.AUTO) && width.u === StyleUnit.AUTO
+      //       || (top.u === StyleUnit.AUTO || bottom.u === StyleUnit.AUTO) && height.u === StyleUnit.AUTO
+      //     ) {
+      //       this.refresh(RefreshLevel.REFLOW);
+      //     }
+      //   }
+      //   if (this.onMeta) {
+      //     this.onMeta(e);
+      //   }
+      // });
+      // smartVideoDecoder.on(SmartVideoDecoderEvent.ERROR, (e: string) => {
+      //   inject.error(e);
+      //   // this.contentLoaded(); TODO
+      //   if (this.onError) {
+      //     this.onError(e);
+      //   }
+      // });
+      // smartVideoDecoder.on(SmartVideoDecoderEvent.CANPLAY, (gop: CacheGOP) => {
+      //   const frame = smartVideoDecoder.getFrameByTime(this._currentTime);
+      //   this.videoFrame = frame;
+      //   this.contentLoaded();
+      //   if (this.onCanplay) {
+      //     this.onCanplay();
+      //   }
+      // });
+      // smartVideoDecoder.on([SmartVideoDecoderEvent.CANPLAY, SmartVideoDecoderEvent.AUDIO_BUFFER], (gop: CacheGOP) => {
+      //   const root = this.root;
+      //   if (!root || !gop.audioBuffer) {
+      //     return;
+      //   }
+      //   const aniController = root.aniController;
+      //   const audioContext = root.audioContext;
+      //   const timeAnimation = this.timeAnimation;
+      //   if (timeAnimation && aniController && audioContext) {
+      //     if (aniController.playState === 'running') {
+      //       const audioBufferSourceNode = audioContext.createBufferSource();
+      //       audioBufferSourceNode.buffer = gop.audioBuffer;
+      //       // 可能在结束后点击从头播放，此时没有数据
+      //       if (!this.gainNode) {
+      //         this.gainNode = audioContext.createGain();
+      //         this.gainNode.gain.value = this.volumn;
+      //         this.gainNode.connect(audioContext.destination);
+      //       }
+      //       audioBufferSourceNode.connect(this.gainNode);
+      //       // 特殊情况，一般不可能，除非解码卡住了，等到播放这个区域后声音才完成
+      //       if (aniController.currentTime >= timeAnimation.delay + gop.relativeCts * 1e-3) {
+      //         audioBufferSourceNode.start(
+      //           0,
+      //           (aniController.currentTime - timeAnimation.delay) * 1e-3 + gop.relativeCts * 1e-6,
+      //           gop.duration * 1e-3,
+      //         );
+      //       }
+      //       else {
+      //         const delay = timeAnimation.delay - aniController.currentTime;
+      //         audioBufferSourceNode.start(
+      //           audioContext.currentTime + delay * 1e-3 + gop.relativeCts * 1e-6,
+      //           0,
+      //           gop.duration * 1e-3,
+      //         );
+      //       }
+      //     }
+      //   }
+      // });
+      // smartVideoDecoder.start(this._currentTime);
+    }
+  }
+
+  // 自适应尺寸情况下使用图片本身的尺寸
+  override lay(data: LayoutData) {
+    super.lay(data);
+    const { style, computedStyle, _metaData } = this;
+    const { left, top, right, bottom, width, height } = style;
+    if (_metaData?.video) {
+      const autoW = (left.u === StyleUnit.AUTO || right.u === StyleUnit.AUTO) && width.u === StyleUnit.AUTO;
+      const autoH = (top.u === StyleUnit.AUTO || bottom.u === StyleUnit.AUTO) && height.u === StyleUnit.AUTO;
+      if (autoW) {
+        if (autoH) {
+          computedStyle.width = _metaData.video.width;
+        }
+        else {
+          computedStyle.width = _metaData.video.height * computedStyle.height / _metaData.video.height;
+        }
+        if (left.u === StyleUnit.AUTO && right.u === StyleUnit.AUTO) {
+          computedStyle.left = 0;
+          computedStyle.right = data.w - computedStyle.width;
+        }
+        else if (left.u === StyleUnit.AUTO) {
+          computedStyle.left = data.w - computedStyle.right - computedStyle.width;
+        }
+        else if (right.u === StyleUnit.AUTO) {
+          computedStyle.right = data.w - computedStyle.left - computedStyle.width;
+        }
+      }
+      if (autoH) {
+        if (autoW) {
+          computedStyle.height = _metaData.video.height;
+        }
+        else {
+          computedStyle.height = _metaData.video.height * computedStyle.width / _metaData.video!.width;
+        }
+        if (top.u === StyleUnit.AUTO && bottom.u === StyleUnit.AUTO) {
+          computedStyle.top = 0;
+          computedStyle.bottom = data.h - computedStyle.height;
+        }
+        else if (top.u === StyleUnit.AUTO) {
+          computedStyle.top = data.h - computedStyle.bottom - computedStyle.height;
+        }
+        else if (bottom.u === StyleUnit.AUTO) {
+          computedStyle.bottom = data.h - computedStyle.top - computedStyle.height;
+        }
+      }
+    }
+  }
+
+  override calRepaintStyle(lv: RefreshLevel) {
+    super.calRepaintStyle(lv);
+    const { computedStyle, videoFrame } = this;
+    this.isPure = computedStyle.backgroundColor[3] <= 0;
+    // 注意圆角影响
+    if (this.isPure && videoFrame) {
+      const {
+        objectFit,
+        borderTopLeftRadius,
+        borderTopRightRadius,
+        borderBottomLeftRadius,
+        borderBottomRightRadius,
+      } = computedStyle;
+      if ((objectFit === OBJECT_FIT.COVER || objectFit === OBJECT_FIT.FILL)
+        && (borderTopLeftRadius || borderTopRightRadius || borderBottomLeftRadius || borderBottomRightRadius)) {
+        this.isPure = false;
+      }
+      else if (objectFit === OBJECT_FIT.CONTAIN
+        && (borderTopLeftRadius || borderTopRightRadius || borderBottomLeftRadius || borderBottomRightRadius)) {
+        const ratio = videoFrame.displayWidth / videoFrame.displayHeight;
+        const ratio2 = computedStyle.width / computedStyle.height;
+        if (ratio2 > ratio) {
+          const w = computedStyle.height * ratio;
+          const dx = (computedStyle.width - w) * 0.5;
+          if (borderTopLeftRadius > dx || borderTopRightRadius > dx || borderBottomLeftRadius > dx || borderBottomRightRadius > dx) {
+            this.isPure = false;
+          }
+        }
+        else if (ratio2 < ratio) {
+          const h = computedStyle.width / ratio;
+          const dy = (computedStyle.height - h) * 0.5;
+          if (borderTopLeftRadius > dy || borderTopRightRadius > dy || borderBottomLeftRadius > dy || borderBottomRightRadius > dy) {
+            this.isPure = false;
+          }
+        }
+        else {
+          this.isPure = false;
+        }
+      }
+    }
+  }
+
+  override calContent() {
+    return this.hasContent = !!this._videoFrame || this.computedStyle.backgroundColor[3] > 0;
+  }
+
+  override renderCanvas() {
+    const { isPure, videoFrame, computedStyle } = this;
+    // 纯视频
+    if (isPure) {
+      this.canvasCache?.release();
+      // 超尺寸才使用canvas分块
+      if (videoFrame && (videoFrame.displayWidth > config.maxTextureSize || videoFrame.displayHeight > config.maxTextureSize)) {
+        const canvasCache = this.canvasCache = CanvasCache.getVideoFrameInstance(videoFrame.displayWidth, videoFrame.displayHeight, videoFrame);
+        canvasCache.available = true;
+        // 第一张图像才绘制，图片解码到canvas上
+        if (canvasCache.getCount() === 1) {
+          let { width, height, objectFit } = computedStyle;
+          let dx = 0, dy = 0;
+          const ratio = videoFrame.displayWidth / videoFrame.displayHeight;
+          const ratio2 = width / height;
+          if (objectFit === OBJECT_FIT.CONTAIN) {
+            if (ratio2 > ratio) {
+              const w = height * ratio;
+              dx = (width - w) * 0.5;
+              width = w;
+            }
+            else if (ratio2 < ratio) {
+              const h = width / ratio;
+              dy = (height - h) * 0.5;
+              height = h;
+            }
+          }
+          else if (objectFit === OBJECT_FIT.COVER) {
+            if (ratio2 > ratio) {
+              const h = width / ratio;
+              dy = (height - h) * 0.5;
+              height = h;
+            }
+            else if (ratio2 < ratio) {
+              const w = height * ratio;
+              dx = (width - w) * 0.5;
+              width = w;
+            }
+          }
+          const list = canvasCache.list;
+          for (let i = 0, len = list.length; i < len; i++) {
+            const { x, y, os } = list[i];
+            os.ctx.drawImage(videoFrame, -x + dx, -y + dy, width, height);
+          }
+        }
+      }
+    }
+    // 复合类型
+    else {
+      super.renderCanvas();
+      const bbox = this._bboxInt || this.bboxInt;
+      const x = bbox[0],
+        y = bbox[1];
+      let w = bbox[2] - x,
+        h = bbox[3] - y;
+      let dx = 0, dy = 0;
+      let { width, height, objectFit } = computedStyle;
+      if (videoFrame) {
+        const ratio = videoFrame.displayWidth / videoFrame.displayHeight;
+        const ratio2 = width / height;
+        if (objectFit === OBJECT_FIT.CONTAIN) {
+          if (ratio2 > ratio) {
+            const w = height * ratio;
+            const d = (width - w) * 0.5;
+            dx += d;
+            width = w;
+          }
+          else if (ratio2 < ratio) {
+            const h = width / ratio;
+            const d = (height - h) * 0.5;
+            dy += d;
+            height = h;
+          }
+        }
+        else if (objectFit === OBJECT_FIT.COVER) {
+          if (ratio2 > ratio) {
+            const h = width / ratio;
+            dy = (height - h) * 0.5;
+            height = h;
+          }
+          else if (ratio2 < ratio) {
+            const w = height * ratio;
+            dx = (width - w) * 0.5;
+            width = w;
+          }
+        }
+      }
+      const canvasCache = (this.canvasCache = new CanvasCache(w, h, -x, -y));
+      canvasCache.available = true;
+      const list = canvasCache.list;
+      if (computedStyle.backgroundColor[3] > 0) {
+        const coords = this.getBackgroundCoords(x, y);
+        list.forEach(item => {
+          const { x, y, os: { ctx } } = item;
+          ctx.fillStyle = color2rgbaStr(computedStyle.backgroundColor);
+          ctx.beginPath();
+          canvasPolygon(ctx, coords, 1, -x, -y);
+          ctx.closePath();
+          ctx.fill();
+        });
+      }
+      for (let i = 0, len = list.length; i < len; i++) {
+        const { x, y, os: { ctx } } = list[i];
+        const dx2 = -x;
+        const dy2 = -y;
+        if (videoFrame) {
+          ctx.drawImage(videoFrame, dx2 + dx, dy2 + dy, width, height);
+        }
+      }
+    }
+  }
+
+  override genTexture(gl: WebGL2RenderingContext | WebGLRenderingContext) {
+    const { isPure, videoFrame, canvasCache } = this;
+    if (isPure) {
+      if (videoFrame) {
+        if (videoFrame.displayWidth > config.maxTextureSize || videoFrame.displayHeight > config.maxTextureSize) {
+          if (canvasCache?.available && TextureCache.hasCanvasCacheInstance(canvasCache)) {
+            const tc = TextureCache.getCanvasCacheInstance(gl, canvasCache, this._rect || this.rect);
+            this.textureTarget = this.textureCache = tc;
+          }
+          else {
+            this.renderCanvas();
+            const tc = TextureCache.getCanvasCacheInstance(gl, this.canvasCache!, this._rect || this.rect,);
+            this.textureTarget = this.textureCache = tc;
+            this.canvasCache!.release();
+          }
+        }
+        else {
+          let { width, height, objectFit } = this.computedStyle;
+          let r = this._rect || this.rect;
+          let tc: { x1: number, y1: number, x3: number, y3: number } | undefined;
+          const ratio = videoFrame.displayWidth / videoFrame.displayHeight;
+          const ratio2 = width / height;
+          if (objectFit === OBJECT_FIT.CONTAIN) {
+            if (ratio2 > ratio) {
+              const w = height * ratio;
+              const d = (width - w) * 0.5;
+              r = r.slice(0);
+              r[0] += d;
+              r[2] -= d;
+            }
+            else if (ratio2 < ratio) {
+              const h = width / ratio;
+              const d = (height - h) * 0.5;
+              r = r.slice(0);
+              r[1] += d;
+              r[3] -= d;
+            }
+          }
+          else if (objectFit === OBJECT_FIT.COVER) {
+            if (ratio2 > ratio) {
+              const h = width / ratio;
+              const d = Math.abs(height - h) * 0.5;
+              const p = d / h;
+              tc = { x1: 0, y1: p, x3: 1, y3: 1 - p };
+            }
+            else if (ratio2 < ratio) {
+              const w = height * ratio;
+              const d = Math.abs(width - w) * 0.5;
+              const p = d / w;
+              tc = { x1: p, y1: 0, x3: 1 - p, y3: 1 };
+            }
+          }
+          const textureCache = TextureCache.getVideoFrameInstance(gl, videoFrame, r, tc);
+          this.textureTarget = this.textureCache = textureCache;
+        }
+      }
+    }
+    else {
+      super.genTexture(gl);
+    }
+  }
+
+  override release() {
+    super.release();
+    const { _decoder, gainNode } = this;
+    if (_decoder) {
+      _decoder.release();
+    }
+    if (gainNode) {
+      gainNode.disconnect();
+      this.gainNode = undefined;
+    }
+  }
+
+  timeAnimate(start: number, options: Options & {
+    autoPlay?: boolean;
+  }) {
+    this.timeAnimation?.remove();
+    const animation = this.timeAnimation = new TimeAnimation(this, start, options);
+    return this.initAnimate(animation, options);
+  }
+
+  get src () {
+    return this._src;
+  }
+
+  get currentTime() {
+    return this._currentTime;
+  }
+
+  set currentTime(v: number) {
+    if (this._currentTime !== v) {
+      this._currentTime = v;
+      const decoder = this._decoder;
+      if (decoder) {
+        const s = v * 1e-3;
+        decoder.start(s);
+        if (this.isMounted) {
+          const old = this._videoFrame;
+          const frame = decoder.getFrameByTime(s);
+          this.videoFrame = frame;
+          if (old && !frame && this._metaData && v * 1e-3 <= this._metaData.duration) {
+            if (decoder.currentGOP?.state !== GOPState.ERROR) {
+              this.contentLoading();
+            }
+            if (this.onWaiting) {
+              this.onWaiting();
+            }
+          }
+        }
+      }
+    }
+  }
+
+  get duration() {
+    return this._metaData?.duration || 0;
+  }
+
+  get metaData() {
+    return this._metaData;
+  }
+
+  get volumn() {
+    return this._volumn;
+  }
+
+  set volumn(v: number) {
+    const n = Math.max(0, Math.min(1, v));
+    if (this._volumn !== n) {
+      this._volumn = n;
+      if (this.gainNode) {
+        this.gainNode.gain.value = n;
+      }
+    }
+  }
+
+  get decoder() {
+    return this._decoder;
+  }
+
+  get videoFrame(): VideoFrame | undefined {
+    return this._videoFrame;
+  }
+
+  set videoFrame(v: VideoFrame | undefined) {
+    if (this._videoFrame !== v) {
+      this._videoFrame = v;
+      this.refresh();
+    }
+  }
+}
+
+export default Video;
