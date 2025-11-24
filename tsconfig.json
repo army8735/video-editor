@@ -14,7 +14,8 @@
     "resolveJsonModule": true,
     "lib": [
       "dom",
-      "webworker"
+      "webworker",
+      "esnext"
     ]
   },
   "exclude": [
