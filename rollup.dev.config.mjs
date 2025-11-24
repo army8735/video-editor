@@ -32,26 +32,6 @@ export default [
     ],
   },
   {
-    input: 'src/mp4box.ts',
-    output: [
-      {
-        file: 'dist/mp4box.js',
-        format: 'umd',
-        name: 'mp4box',
-        sourcemap: true,
-      },
-    ],
-    plugins: [
-      nodeResolve({ preferBuiltins: false }),
-      commonjs(),
-      typescript({
-        declaration: false,
-        target: "ES5",
-      }),
-      json(),
-    ],
-  },
-  {
     input: 'src/decoder.ts',
     output: [
       {

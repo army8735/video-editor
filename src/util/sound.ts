@@ -35,7 +35,7 @@ export function extractAudioBuffer(sourceBuffer: AudioBuffer, start: number, end
   //   const index = startFrame + i;
   //   const timestamp = index * 1e3 / sampleRate;
   //   const duration = 1e3 / sampleRate;
-  //   const channels: Float32Array<ArrayBuffer>[] = [];
+  //   const channels: Float32Array[] = [];
   //   for (let i = 0; i < numberOfChannels; i++) {
   //     // 获取原始通道数据
   //     const channelData = sourceBuffer.getChannelData(i);
@@ -58,7 +58,7 @@ export function extractAudioBuffer(sourceBuffer: AudioBuffer, start: number, end
   // return res;
   const timestamp = startFrame * 1e3 / sampleRate;
   const duration = numberOfFrames * 1e3 / sampleRate;
-  const channels: Float32Array<ArrayBuffer>[] = [];
+  const channels: Float32Array[] = [];
   for (let i = 0; i < numberOfChannels; i++) {
     // 获取原始通道数据
     const channelData = sourceBuffer.getChannelData(i);
@@ -83,9 +83,7 @@ export function extractAudioBuffer(sourceBuffer: AudioBuffer, start: number, end
 
 export async function reSample(
   sourceBuffer: AudioBuffer,
-  // numberOfFrames: number,
   numberOfChannels: number,
-  // sourceSampleRate: number,
   targetSampleRate: number,
 ) {
   if (sourceBuffer.numberOfChannels === numberOfChannels && sourceBuffer.sampleRate === targetSampleRate) {
@@ -113,20 +111,23 @@ export async function reSample(
   return await targetContext.startRendering();
 }
 
-export function sliceAudioBuffer(audioBuffer: AudioBuffer, start: number, end: number) {
+export function sliceAudioBuffer(audioBuffer: AudioBuffer, start: number, end: number, copy = false) {
   const startFrame = Math.floor(start * 1e-3 * audioBuffer.sampleRate);
   const endFrame = Math.min(Math.ceil(end * 1e-3 * audioBuffer.sampleRate), audioBuffer.length);
   if (startFrame > endFrame || startFrame >= audioBuffer.length) {
     throw new Error('Invalid range');
   }
-  if (startFrame === 0 && endFrame >= audioBuffer.length - 1) {
-    return audioBuffer;
-  }
+  // if (startFrame === 0 && endFrame >= audioBuffer.length - 1) {
+  //   return audioBuffer;
+  // }
   const context = new OfflineAudioContext(audioBuffer.numberOfChannels, endFrame - startFrame + 1, audioBuffer.sampleRate);
   const buffer = context.createBuffer(audioBuffer.numberOfChannels, endFrame - startFrame + 1, audioBuffer.sampleRate);
   for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
-    const d = audioBuffer.getChannelData(i);
-    const view = d.subarray(startFrame, endFrame + 1);
+    let data = audioBuffer.getChannelData(i);
+    if (copy) {
+      data = data.slice(0);
+    }
+    const view = data.subarray(startFrame, endFrame + 1);
     buffer.copyToChannel(view, i, 0);
   }
   return buffer;

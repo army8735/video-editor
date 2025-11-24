@@ -1,5 +1,5 @@
 {
-  "name": "video-editor",
+  "name": "krono-flow",
   "version": "0.1.0",
   "maintainers": [
     {
@@ -17,7 +17,6 @@
   "dependencies": {
     "jszip": "^3.10.1",
     "mediabunny": "^1.25.1",
-    "mp4box": "^0.5.4",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
@@ -58,5 +57,5 @@
   "license": "MIT",
   "readmeFilename": "README.md",
   "author": "army8735 <army8735@qq.com>",
-  "repository": "git@github.com:army8735/video-editor.git"
+  "repository": "git@github.com:army8735/krono-flow.git"
 }

@@ -11,7 +11,11 @@
     "strict": true,
     "skipLibCheck": true,
     "moduleResolution": "node",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "lib": [
+      "dom",
+      "webworker"
+    ]
   },
   "exclude": [
     "node_modules",

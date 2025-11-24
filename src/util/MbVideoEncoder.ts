@@ -6,7 +6,8 @@ import { EncoderEvent, EncoderType, onMessage } from '../encoder';
 import { CAN_PLAY } from '../refresh/refreshEvent';
 import TimeAnimation from '../animation/TimeAnimation';
 import MbVideoDecoder from './MbVideoDecoder';
-import { sliceAudioBuffer } from './sound';
+import { reSample, sliceAudioBuffer } from './sound';
+import { AudioChunk } from '../decoder';
 
 let worker: Worker;
 let noWorker = false;
@@ -38,7 +39,7 @@ export class MbVideoEncoder extends Event {
       worker = new Worker(url);
     }
     else {
-      // noWorker = true;
+      noWorker = true;
     }
   }
 
@@ -100,14 +101,15 @@ export class MbVideoEncoder extends Event {
       // console.log('encode', i, num, timestamp);
       this.emit(MbVideoEncoderEvent.PROGRESS, i, num, true);
       await new Promise<void>((resolve, reject) => {
-        const cb = async () => {
+        const frameCb = async () => {
           const bitmap = await createImageBitmap(root.canvas!);
           const videoFrame = new VideoFrame(bitmap, {
             timestamp: timestamp * 1e3,
             duration: spf * 1e3,
           });
-          let audioBuffers: { id: number, data: AudioBuffer, volume: number, timestamp: number }[] = [];
-          root.aniController.aniList.forEach(item => {
+          const audioList: { audioChunk: AudioChunk, volume: number }[] = [];
+          for (let i = 0, len = root.aniController.aniList.length; i < len; i++) {
+            const item = root.aniController.aniList[i];
             const { delay, duration } = item;
             // 范围内的声音才有效
             if (item instanceof TimeAnimation
@@ -116,35 +118,49 @@ export class MbVideoEncoder extends Event {
             ) {
               const node = item.node;
               if (node instanceof Lottie || !node.volumn) {
-                return;
+                continue;
               }
               const decoder = node.decoder;
               if (!decoder) {
-                return;
+                continue;
               }
               const gop = decoder.currentGOP;
               if (!gop) {
-                return;
+                continue;
               }
               const audioBuffer = gop.audioBuffer;
               if (!audioBuffer) {
-                return;
+                continue;
               }
               const key = node.id + '-' + gop.index;
               if (audioRecord[key]) {
-                return;
+                continue;
               }
               audioRecord[key] = true;
               const diff = gop.audioTimestamp - gop.timestamp;
-              if (gop.audioTimestamp + gop.audioDuration > item.duration) {
-                audioBuffers.push({ id: node.id, data: sliceAudioBuffer(audioBuffer, 0, item.duration - gop.audioTimestamp), volume: node.volumn, timestamp: timestamp + diff });
+              const buffer = sliceAudioBuffer(audioBuffer, 0, item.duration - gop.audioTimestamp);
+              const { duration } = buffer;
+              const newBuffer = await reSample(buffer, audioEncoderConfig.numberOfChannels, audioEncoderConfig.sampleRate);
+              const channels: Float32Array[] = [];
+              for (let ch = 0; ch < audioEncoderConfig.numberOfChannels; ch++) {
+                const data = newBuffer.getChannelData(ch);
+                channels.push(data);
               }
-              else {
-                audioBuffers.push({ id: node.id, data: audioBuffer, volume: node.volumn, timestamp: timestamp + diff });
-              }
+              audioList.push({
+                audioChunk: {
+                  format: 'f32-planar',
+                  channels,
+                  sampleRate: audioEncoderConfig.sampleRate,
+                  numberOfChannels: audioEncoderConfig.numberOfChannels,
+                  numberOfFrames: buffer.length,
+                  timestamp: timestamp + diff,
+                  duration: duration * 1e3,
+                },
+                volume: node.volumn,
+              });
             }
-          });
-          const cb = (e: MessageEvent<{
+          }
+          const messageCb = (e: MessageEvent<{
             type: EncoderEvent,
             buffer: ArrayBuffer,
             error: string,
@@ -164,30 +180,36 @@ export class MbVideoEncoder extends Event {
             isWorker: !!config.encoderWorker || !!config.encoderWorkerStr,
             timestamp,
             videoFrame,
-            audioBuffers,
+            audioList,
             audioEncoderConfig,
             mute: config.mute,
           };
+          const transferList: Transferable[] = [];
+          transferList.push(videoFrame);
+          audioList.forEach(item => {
+            item.audioChunk.channels.forEach(channel => {
+              transferList.push(channel.buffer);
+            });
+          });
           if (worker) {
-            worker.onmessage = cb;
+            worker.onmessage = messageCb;
             worker.postMessage(
               mes,
-              // @ts-ignore
-              [videoFrame] as Transferable,
+              transferList,
             );
           }
           else {
             onMessage({ data: mes } as any).then(res => {
-              cb(res as any);
+              messageCb(res as any);
             });
           }
         };
         // 可能没有刷新
         if (root.contentLoadingCount) {
-          root.once(CAN_PLAY, cb);
+          root.once(CAN_PLAY, frameCb);
         }
         else {
-          cb();
+          frameCb();
         }
         // if (root.rl === RefreshLevel.NONE) {
         //   cb();

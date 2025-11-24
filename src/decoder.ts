@@ -10,7 +10,6 @@ import {
   AudioSampleSink,
 } from 'mediabunny';
 import { loadRange } from './util/loadRangeCache';
-import { convertS16ToFloat32 } from './util/sound';
 
 export enum DecoderType {
   META = 0,
@@ -35,7 +34,7 @@ export enum GOPState {
 }
 
 export type AudioChunk = {
-  channels: Float32Array<ArrayBuffer>[],
+  channels: Float32Array[],
   sampleRate: number,
   numberOfFrames: number,
   numberOfChannels: number,
@@ -367,7 +366,7 @@ export const onMessage = async (e: MessageEvent<{
           audioTimeStamp = timestamp * 1e3;
         }
         audioDuration = timestamp * 1e3 - audioTimeStamp + duration * 1e3;
-        const channels: Float32Array<ArrayBuffer>[] = [];
+        const channels: Float32Array[] = [];
         for (let ch = 0; ch < numberOfChannels; ch++) {
           const tmp = new Float32Array(numberOfFrames);
           // audioBuffer只支持f32
@@ -414,9 +413,7 @@ export const onMessage = async (e: MessageEvent<{
       },
     };
     if (isWorker) {
-      self.postMessage(res,
-        // @ts-ignore
-        transferList);
+      (self as DedicatedWorkerGlobalScope).postMessage(res, transferList);
     }
     return { data: res };
   }
@@ -446,7 +443,7 @@ export const onMessage = async (e: MessageEvent<{
       for await (const sample of sink.samples(time * 1e-3, (time + e.data.spf) * 1e-3)) {
         sampleRate = sample.sampleRate;
         const { format, numberOfChannels, numberOfFrames, timestamp, duration } = sample;
-        const channels: Float32Array<ArrayBuffer>[] = [];
+        const channels: Float32Array[] = [];
         for (let ch = 0; ch < numberOfChannels; ch++) {
           const tmp = new Float32Array(numberOfFrames);
           sample.copyTo(tmp, { planeIndex: ch, format: sample.format });
@@ -487,9 +484,7 @@ export const onMessage = async (e: MessageEvent<{
       },
     };
     if (isWorker) {
-      self.postMessage(res,
-        // @ts-ignore
-        transferList);
+      (self as DedicatedWorkerGlobalScope).postMessage(res, transferList);
     }
     return { data: res };
   }

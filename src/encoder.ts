@@ -7,7 +7,7 @@ import {
   EncodedAudioPacketSource,
   WebMOutputFormat,
 } from 'mediabunny';
-import { reSample } from './util/sound';
+import { AudioChunk } from './decoder';
 
 export enum EncoderType {
   INIT = 0,
@@ -45,6 +45,7 @@ export const onMessage = async (e: MessageEvent<{
   videoEncoderConfig: VideoEncoderConfig,
   // audioChunks?: AudioChunk[],
   audioBuffers: { id: number, data: AudioBuffer, volume: number, timestamp: number }[],
+  audioList: { audioChunk: AudioChunk, volume: number }[],
   audioEncoderConfig: AudioEncoderConfig,
   mute: boolean,
 }>) => {
@@ -193,21 +194,31 @@ export const onMessage = async (e: MessageEvent<{
       videoEncoder.encode(videoFrame);
     }
     videoFrame?.close();
-    const audioBuffers = e.data.audioBuffers;
+    const audioList = e.data.audioList;
     const { numberOfChannels, sampleRate } = e.data.audioEncoderConfig;
     if (audioEncoder && audioEncoder.state === 'configured') {
-      if (audioBuffers.length) {
-        for (let i = 0, len = audioBuffers.length; i < len; i++) {
-          // 先重采样和等声道
-          const { data, volume, timestamp } = audioBuffers[i];
-          const newBuffer = await reSample(data, numberOfChannels, sampleRate);
+      if (audioList.length) {
+        for (let i = 0, len = audioList.length; i < len; i++) {
+          const { audioChunk, volume } = audioList[i];
+          // const audioContext = new OfflineAudioContext(
+          //   audioChunk.numberOfChannels,
+          //   audioChunk.numberOfFrames,
+          //   audioChunk.sampleRate,
+          // );
+          // const audioBuffer = audioContext.createBuffer(audioChunk.channels.length, audioChunk.numberOfFrames, audioChunk.sampleRate);
+          // for (let ch = 0; ch < audioChunk.channels.length; ch++) {
+          //   const channelData = audioBuffer.getChannelData(ch);
+          //   channelData.set(audioChunk.channels[ch], 0);
+          // }
+          // const newBuffer = await reSample(audioBuffer, numberOfChannels, sampleRate);
           // 计算当前时间在整体的偏移frame位置
-          const frameOffset = Math.round(timestamp * 1e-3 * sampleRate);
-          const length = newBuffer.length;
+          const frameOffset = Math.round(audioChunk.timestamp * 1e-3 * sampleRate);
+          const length = audioChunk.numberOfFrames;
           for (let i = 0; i < numberOfChannels; i++) {
             const masterChannel = masterChannels[i];
             // 直接获取每个声道的 Float32Array 数据
-            const d = newBuffer.getChannelData(i);
+            const d = audioChunk.channels[i];
+            // console.log(d);
             for (let j = 0; j < length; j++) {
               const index = frameOffset + j;
               // 简单的增益控制clamping
@@ -266,12 +277,9 @@ export const onMessage = async (e: MessageEvent<{
     const res = {
       type: EncoderEvent.FINISH,
       buffer,
-      // @ts-ignore
     };
     if (isWorker) {
-      self.postMessage(res,
-        // @ts-ignore
-        [buffer]);
+      (self as DedicatedWorkerGlobalScope).postMessage(res, [buffer] as Transferable[]);
     }
     else {
       return { data: res };
