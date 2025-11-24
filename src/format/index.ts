@@ -4,7 +4,6 @@ import {
   Style,
 } from '../style/define';
 import { VideoAudioMeta } from '../decoder';
-import { LoadAudioRes } from '../util/loadAudio';
 
 export type Props = {
   uuid?: string;
@@ -37,9 +36,25 @@ export type VideoProps = Props & {
 export type AudioProps = Props & {
   src: string;
   currentTime?: number;
-  onLoad?: (o: LoadAudioRes) => void;
+  onMeta?: (o: VideoAudioMeta) => void;
+  // onLoad?: (o: LoadAudioRes) => void;
+  onCanplay?: () => void;
   onError?: (e: string) => void;
+  onWaiting?: () => void;
   volumn?: number;
+  options?: RequestInit;
+};
+
+export type LottieMeta = {
+  duration: number;
+};
+
+export type LottieProps = Props & {
+  src?: string;
+  json?: JSON;
+  currentTime?: number;
+  onMeta?: (o: LottieMeta) => void;
+  onLoad?: () => void;
   options?: RequestInit;
 };
 

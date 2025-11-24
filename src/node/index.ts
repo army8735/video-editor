@@ -5,6 +5,7 @@ import Root from './Root';
 import Video from './Video';
 import Audio from './Audio';
 import Text from './Text';
+import Lottie from './Lottie';
 
 export default {
   Container,
@@ -14,4 +15,5 @@ export default {
   Video,
   Audio,
   Text,
+  Lottie,
 };

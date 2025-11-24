@@ -10,11 +10,12 @@ import {
   AudioSampleSink,
 } from 'mediabunny';
 import { loadRange } from './util/loadRangeCache';
+import { convertS16ToFloat32 } from './util/sound';
 
 export enum DecoderType {
   META = 0,
   DECODE = 1,
-  DECODE_SINGLE = 2,
+  DECODE_FRAME = 2,
   RELEASE = 3,
 }
 
@@ -22,18 +23,26 @@ export enum DecoderEvent {
   META = 'meta',
   ERROR = 'error',
   DECODED = 'decoded',
-  DECODED_SINGLE = 'decoded_single',
+  DECODED_FRAME = 'decoded_frame',
 }
 
 export enum GOPState {
   NONE = 0,
   DECODING = 1,
   DECODED = 2,
-  DECODED_SINGLE = 3,
+  DECODED_FRAME = 3,
   ERROR = 4,
 }
 
-export type AudioChunk = { channels: Float32Array[], numberOfFrames: number };
+export type AudioChunk = {
+  channels: Float32Array<ArrayBuffer>[],
+  sampleRate: number,
+  numberOfFrames: number,
+  numberOfChannels: number,
+  timestamp: number,
+  duration: number,
+  format: AudioSampleFormat,
+};
 
 export type GOP = {
   state: GOPState,
@@ -41,6 +50,8 @@ export type GOP = {
   sequenceNumber: number,
   timestamp: number,
   duration: number,
+  audioTimestamp: number,
+  audioDuration: number,
   users: number[], // smartVideoDecoder的id
 };
 
@@ -48,7 +59,9 @@ export type SimpleGOP = Pick<GOP,
   'index' |
   'sequenceNumber' |
   'timestamp' |
-  'duration'
+  'duration' |
+  'audioTimestamp' |
+  'audioDuration'
 >;
 
 export type VideoAudioMeta = {
@@ -82,7 +95,7 @@ export type VideoAudioMeta = {
   fileSize: number;
 };
 
-async function sleep(ms: number) {
+export async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -94,25 +107,32 @@ type FileData = {
 
 const FILE_HASH: Record<string, FileData> = {};
 
-self.onmessage = async (e: MessageEvent<{
+export const onMessage = async (e: MessageEvent<{
   url: string,
   id: number,
   type: DecoderType,
   messageId: number,
+  isWorker: boolean,
   preloadAll: boolean,
   gopMinDuration: number,
   time: number,
   index: number,
-  singleSample: boolean,
+  mute: boolean,
+  includeAudio: boolean,
+  spf: number,
 }>) => {
-  const { url, id, type } = e.data;
-  // console.log('decoder', url, id, type);
+  const { url, id, type, isWorker } = e.data;
+  // console.log('decoder', url, id, type, isWorker);
   const onError = (e: string) => {
-    self.postMessage({
+    const res = {
       url,
       type: DecoderEvent.ERROR,
       data: e,
-    });
+    };
+    if (isWorker) {
+      self.postMessage(res);
+    }
+    return { data: res };
   };
   if (!FILE_HASH[url]) {
     FILE_HASH[url] = {
@@ -125,8 +145,7 @@ self.onmessage = async (e: MessageEvent<{
     const headResponse = await fetch(url, { method: 'HEAD' });
     const cl = headResponse.headers.get('content-length');
     if (!cl || headResponse.status !== 200 && headResponse.status !== 304) {
-      onError('Unknown content-length');
-      return;
+      return onError('Unknown content-length');
     }
     const fileSize = parseInt(cl);
     // 解封装的基础信息
@@ -135,14 +154,15 @@ self.onmessage = async (e: MessageEvent<{
       fileSize: fileSize,
     };
     let source: UrlSource | StreamSource;
+    // config配置全部加载，或者自定义range请求
     if (e.data.preloadAll) {
       source = new UrlSource(url);
     }
     else {
       source = new StreamSource({
         read: async (start, end) => {
-          // console.warn(start, end);
-          const { arrayBuffer } = await loadRange(url, start, end - 1);
+          // console.log(start, end);
+          const { arrayBuffer } = await loadRange(url, start, end - 1, fileSize);
           if (!arrayBuffer) {
             throw new Error('Missing buffer in range: ' + start + '-' + (end - 1));
           }
@@ -158,8 +178,12 @@ self.onmessage = async (e: MessageEvent<{
       formats: ALL_FORMATS,
       source,
     });
-    const data = await input.computeDuration();
-    meta.duration = data;
+    try {
+      const data = await input.computeDuration();
+      meta.duration = data * 1e3;
+    } catch (e: any) {
+      return onError(e.message);
+    }
     const videoTrack = await input.getPrimaryVideoTrack();
     if (videoTrack) {
       fileData.videoTrack = videoTrack;
@@ -172,17 +196,19 @@ self.onmessage = async (e: MessageEvent<{
           if (len) {
             const last = fileData.gopList[len - 1];
             // 这个GOP太短合并
-            if (e.data.gopMinDuration && packet.timestamp - last.timestamp < e.data.gopMinDuration) {
+            if (e.data.gopMinDuration && (packet.timestamp * 1e3 - last.timestamp) < e.data.gopMinDuration) {
               continue;
             }
-            last.duration = packet.timestamp - last.timestamp;
+            last.duration = last.audioDuration = packet.timestamp * 1e3 - last.timestamp;
           }
           fileData.gopList.push({
             state: GOPState.NONE,
             index: fileData.gopList.length,
             sequenceNumber: packet.sequenceNumber,
-            timestamp: packet.timestamp,
-            duration: packet.duration,
+            timestamp: packet.timestamp * 1e3,
+            duration: packet.duration * 1e3,
+            audioTimestamp: packet.timestamp * 1e3,
+            audioDuration: packet.duration * 1e3,
             users: [],
           });
         }
@@ -191,7 +217,7 @@ self.onmessage = async (e: MessageEvent<{
       const len = fileData.gopList.length;
       if (len) {
         const last = fileData.gopList[len - 1];
-        last.duration = duration - last.timestamp;
+        last.duration = last.audioDuration = duration * 1e3 - last.timestamp;
       }
       const timestamp = await videoTrack.getFirstTimestamp();
       meta.video = {
@@ -207,8 +233,8 @@ self.onmessage = async (e: MessageEvent<{
         height: videoTrack.displayHeight,
         timeResolution: videoTrack.timeResolution,
         rotation: videoTrack.rotation,
-        timestamp,
-        duration,
+        timestamp: timestamp * 1e3,
+        duration: duration * 1e3,
       };
     }
     const audioTrack = await input.getPrimaryAudioTrack();
@@ -223,12 +249,49 @@ self.onmessage = async (e: MessageEvent<{
         name: audioTrack.name,
         numberOfChannels: audioTrack.numberOfChannels,
         sampleRate: audioTrack.sampleRate,
-        timestamp,
-        duration,
+        timestamp: timestamp * 1e3,
+        duration: duration * 1e3,
       };
-      // 没有视频仅有音频的特殊视频文件，用音频轨道虚拟出gop列表
+      // 没有视频仅有音频的特殊视频文件，或者纯音频解码，用音频轨道虚拟出gop列表
       if (!videoTrack) {
-        // const sink = new EncodedPacketSink(audioTrack);
+        const gopMinDuration = e.data.gopMinDuration || 5000;
+        const sink = new EncodedPacketSink(audioTrack);
+        let timestamp = -1;
+        let isFirst = true;
+        let sequenceNumber = 0;
+        // 音频没有关键帧概念，用时间均分出gop
+        for await (const packet of sink.packets(undefined, undefined, { metadataOnly: true })) {
+          if (timestamp === -1) {
+            timestamp = packet.timestamp;
+          }
+          const diff = packet.timestamp - timestamp;
+          if (isFirst || diff * 1e3 >= gopMinDuration) {
+            isFirst = false;
+            const len = fileData.gopList.length;
+            if (len) {
+              const last = fileData.gopList[len - 1];
+              last.duration = last.audioDuration = packet.timestamp * 1e3 - last.timestamp;
+            }
+            fileData.gopList.push({
+              state: GOPState.NONE,
+              index: fileData.gopList.length,
+              sequenceNumber,
+              timestamp: packet.timestamp * 1e3,
+              duration: packet.duration * 1e3,
+              audioTimestamp: packet.timestamp * 1e3,
+              audioDuration: packet.duration * 1e3,
+              users: [],
+            });
+            timestamp = packet.timestamp;
+          }
+          sequenceNumber++;
+        }
+        // 最后一个用整体时长计算，可能会不足普通gop的duration
+        const len = fileData.gopList.length;
+        if (len) {
+          const last = fileData.gopList[len - 1];
+          last.duration = last.audioDuration = duration * 1e3 - last.timestamp;
+        }
       }
     }
     const simpleGOPList: SimpleGOP[] = fileData.gopList.map(item => {
@@ -237,13 +300,19 @@ self.onmessage = async (e: MessageEvent<{
         sequenceNumber: item.sequenceNumber,
         timestamp: item.timestamp,
         duration: item.duration,
+        audioTimestamp: item.audioTimestamp,
+        audioDuration: item.audioDuration,
       };
     });
-    self.postMessage({
+    const res = {
       url,
       type: DecoderEvent.META,
       data: { meta, simpleGOPList },
-    });
+    };
+    if (isWorker) {
+      self.postMessage(res);
+    }
+    return { data: res };
   }
   else if (type === DecoderType.DECODE) {
     const gop = fileData.gopList[e.data.index];
@@ -273,27 +342,46 @@ self.onmessage = async (e: MessageEvent<{
     const videoFrames: VideoFrame[] = [];
     if (fileData.videoTrack) {
       const sink = new VideoSampleSink(fileData.videoTrack);
-      for await (const sample of sink.samples(gop.timestamp, gop.timestamp + gop.duration)) {
+      for await (const sample of sink.samples(gop.timestamp * 1e-3, (gop.timestamp + gop.duration) * 1e-3)) {
         videoFrames.push(sample.toVideoFrame());
         sample.close();
       }
     }
     const audioChunks: AudioChunk[] = [];
     let sampleRate = 0;
-    if (fileData.audioTrack) {
+    let audioTimeStamp = -1;
+    let audioDuration = 0;
+    if (fileData.audioTrack && !e.data.mute) {
       const sink = new AudioSampleSink(fileData.audioTrack);
-      for await (const sample of sink.samples(gop.timestamp, gop.timestamp + gop.duration)) {
+      const start = gop.timestamp * 1e-3;
+      const end = (gop.timestamp + gop.duration) * 1e-3;
+      const samples = sink.samples(start, end);
+      for await (const sample of samples) {
         sampleRate = sample.sampleRate;
-        const { numberOfChannels, numberOfFrames } = sample;
-        const channels: Float32Array[] = [];
+        const { numberOfChannels, numberOfFrames, timestamp, duration } = sample;
+        // 位于2个gop之间的sample归属上一个gop
+        if (timestamp >= end && gop.index < fileData.gopList.length - 1 || timestamp < start) {
+          continue;
+        }
+        if (audioTimeStamp === -1) {
+          audioTimeStamp = timestamp * 1e3;
+        }
+        audioDuration = timestamp * 1e3 - audioTimeStamp + duration * 1e3;
+        const channels: Float32Array<ArrayBuffer>[] = [];
         for (let ch = 0; ch < numberOfChannels; ch++) {
           const tmp = new Float32Array(numberOfFrames);
-          sample.copyTo(tmp, { planeIndex: ch, format: sample.format });
+          // audioBuffer只支持f32
+          sample.copyTo(tmp, { planeIndex: ch, format: 'f32-planar' });
           channels.push(tmp);
         }
         audioChunks.push({
+          format: 'f32-planar',
           channels,
+          sampleRate,
           numberOfFrames,
+          numberOfChannels,
+          timestamp: timestamp * 1e3,
+          duration: duration * 1e3,
         });
         sample.close();
       }
@@ -306,13 +394,14 @@ self.onmessage = async (e: MessageEvent<{
       return;
     }
     gop.state = GOPState.DECODED;
-    const transferList: Transferable[] = (videoFrames as Transferable[]).slice(0);
+    const transferList: Transferable[] = [];
+    videoFrames.forEach(item => transferList.push(item));
     audioChunks.forEach(item => {
       item.channels.forEach(item => {
         transferList.push(item.buffer);
       });
     });
-    self.postMessage({
+    const res = {
       url,
       type: DecoderEvent.DECODED,
       data: {
@@ -320,32 +409,103 @@ self.onmessage = async (e: MessageEvent<{
         videoFrames,
         audioChunks,
         sampleRate,
+        audioTimeStamp,
+        audioDuration,
       },
-      // @ts-ignore
-    }, transferList);
+    };
+    if (isWorker) {
+      self.postMessage(res,
+        // @ts-ignore
+        transferList);
+    }
+    return { data: res };
   }
-  else if (type === DecoderType.DECODE_SINGLE) {
-    const videoFrames: VideoFrame[] = [];
+  // 单帧编码，一般在服务器内存不足时用，gop只存本段音频，单帧Frame按时间发送
+  else if (type === DecoderType.DECODE_FRAME) {
+    const gop = fileData.gopList[e.data.index];
+    // 理论不会，预防，只有加载成功后才会进入解码状态
+    if (!gop || gop.state === GOPState.ERROR) {
+      return;
+    }
+    // 取指定时间的一帧
+    const time = e.data.time;
+    let videoFrame: VideoFrame | undefined;
     if (fileData.videoTrack) {
       const sink = new VideoSampleSink(fileData.videoTrack);
-      const sample = await sink.getSample(e.data.time);
+      const sample = await sink.getSample(time * 1e-3);
       if (sample) {
-        videoFrames.push(sample.toVideoFrame());
+        videoFrame = sample.toVideoFrame();
         sample.close();
       }
     }
-    const audioData: AudioData[] = [];
-    if (fileData.audioTrack) {}
-    const transferList: Transferable[] = (videoFrames as Transferable[]).concat(audioData);
-    self.postMessage({
+    let audioChunks: AudioChunk[] | undefined;
+    let sampleRate = 0;
+    if (fileData.audioTrack && !e.data.mute) {
+      audioChunks = [];
+      const sink = new AudioSampleSink(fileData.audioTrack);
+      for await (const sample of sink.samples(time * 1e-3, (time + e.data.spf) * 1e-3)) {
+        sampleRate = sample.sampleRate;
+        const { format, numberOfChannels, numberOfFrames, timestamp, duration } = sample;
+        const channels: Float32Array<ArrayBuffer>[] = [];
+        for (let ch = 0; ch < numberOfChannels; ch++) {
+          const tmp = new Float32Array(numberOfFrames);
+          sample.copyTo(tmp, { planeIndex: ch, format: sample.format });
+          channels.push(tmp);
+        }
+        audioChunks.push({
+          format,
+          channels,
+          sampleRate,
+          numberOfFrames,
+          numberOfChannels,
+          timestamp: timestamp * 1e3,
+          duration: duration * 1e3,
+        });
+        sample.close();
+      }
+    }
+    const transferList: Transferable[] = [];
+    if (videoFrame) {
+      transferList.push(videoFrame);
+    }
+    if (audioChunks) {
+      audioChunks.forEach(item => {
+        item.channels.forEach(item => {
+          transferList.push(item.buffer);
+        });
+      });
+    }
+    const res = {
       url,
-      type: DecoderEvent.DECODED_SINGLE,
+      type: DecoderEvent.DECODED_FRAME,
       data: {
         index: e.data.index,
-        videoFrames,
-        audioData,
+        time,
+        videoFrame,
+        audioChunks,
+        sampleRate,
       },
-      // @ts-ignore
-    }, transferList);
+    };
+    if (isWorker) {
+      self.postMessage(res,
+        // @ts-ignore
+        transferList);
+    }
+    return { data: res };
+  }
+  else if (type === DecoderType.RELEASE) {
+    const gop = fileData.gopList[e.data.index];
+    if (!gop) {
+      return;
+    }
+    const i = gop.users.indexOf(e.data.id);
+    if (i > -1) {
+      gop.users.splice(i, 1);
+    }
+    if (!gop.users.length) {
+      gop.state = GOPState.NONE;
+    }
   }
 };
+
+self.onmessage = onMessage;

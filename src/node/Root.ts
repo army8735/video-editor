@@ -13,11 +13,8 @@ import mainVert from '../gl/main.vert';
 import mainFrag from '../gl/main.frag';
 import AbstractAnimation from '../animation/AbstractAnimation';
 import AniController from '../animation/AniController';
-import config from '../config';
-import { EncoderEvent, EncoderType } from '../encoder';
-import { REFRESH, REFRESH_COMPLETE } from '../refresh/refreshEvent';
-
-let worker: Worker;
+import { CAN_PLAY, WAITING, REFRESH, REFRESH_COMPLETE } from '../refresh/refreshEvent';
+import MbVideoEncoder from '../util/MbVideoEncoder';
 
 class Root extends Container {
   canvas?: HTMLCanvasElement;
@@ -33,6 +30,7 @@ class Root extends Container {
   aniController: AniController;
   audioContext: AudioContext;
   contentLoadingCount: number; // 各子节点控制（如视频）加载中++，完成后--，为0时说明渲染完整
+  lastContentLoadingCount: number;
 
   constructor(props: RootProps, children: Node[] = []) {
     super(props, children);
@@ -71,6 +69,7 @@ class Root extends Container {
     this.audioContext = new AudioContext();
     this.aniController = new AniController(this.audioContext);
     this.contentLoadingCount = 0;
+    this.lastContentLoadingCount = 0;
   }
 
   appendTo(canvas: HTMLCanvasElement) {
@@ -265,9 +264,18 @@ class Root extends Container {
       if (this.ctx) {
         renderWebgl(this.ctx, this);
         this.emit(REFRESH);
-        if (!this.contentLoadingCount) {
+        if (this.contentLoadingCount) {
+          if (!this.lastContentLoadingCount) {
+            this.emit(WAITING);
+          }
+        }
+        else {
+          if (this.lastContentLoadingCount) {
+            this.emit(CAN_PLAY);
+          }
           this.emit(REFRESH_COMPLETE);
         }
+        this.lastContentLoadingCount = this.contentLoadingCount;
       }
     }
   }
@@ -285,121 +293,8 @@ class Root extends Container {
     gl.useProgram(program);
   }
 
-  async encode(name: string, customConfig?: Partial<VideoEncoderConfig>) {
-    if (!this.canvas) {
-      return;
-    }
-    const videoEncoderConfig: VideoEncoderConfig = Object.assign({
-      // 1. 核心格式
-      codec: 'avc1.420028', // H.264 Baseline Profile (广泛兼容)
-      width: this.width,
-      height: this.height,
-      bitrate: 5_000_000, // 5 Mbps (高画质)
-      bitrateMode: 'variable',
-      framerate: 30,
-      hardwareAcceleration: 'no-preference',
-    }, customConfig);
-    const support = await VideoEncoder.isConfigSupported(videoEncoderConfig);
-    if (support && support.supported) {
-      if (!worker) {
-        if (config.encoderWorker) {
-          worker = new Worker(config.encoderWorker);
-        }
-        else if (config.encoderWorkerStr) {
-          const blob = new Blob([config.mp4boxWorkerStr.trim()], { 'type': 'application/javascript' });
-          const url = URL.createObjectURL(blob);
-          worker = new Worker(url);
-        }
-        else {
-          throw new Error('Missing encoderWorker config');
-        }
-      }
-      worker.postMessage({
-        type: EncoderType.INIT,
-        videoEncoderConfig,
-      });
-      // 计算帧数和时间，每次走一帧的时间渲染
-      const duration = this.aniController.duration;
-      if (!duration || !videoEncoderConfig.framerate) {
-        return;
-      }
-      const spf = 1e3 / videoEncoderConfig.framerate;
-      const num = Math.ceil(duration / spf);
-      // 第一帧特殊处理，可能当前就是第一帧且已经渲染完
-      this.aniController.gotoAndStop(0);
-      let i = 0;
-      if (this.contentLoadingCount) {
-        i = 0;
-      }
-      else {
-        i = 1;
-        const bitmap = await createImageBitmap(this.canvas);
-        const videoFrame = new VideoFrame(bitmap, {
-          timestamp: 0,
-          duration: spf,
-        });
-        worker.postMessage({
-          type: EncoderType.VIDEO_FRAME,
-          videoFrame,
-        }, [videoFrame]);
-        await new Promise<void>(resolve => {
-          worker.onmessage = (e: MessageEvent<{
-            type: EncoderEvent,
-            buffer: ArrayBuffer,
-          }>) => {
-            if (e.data.type === EncoderEvent.PROGRESS) {
-              resolve();
-            }
-          };
-        });
-      }
-      for (; i < num; i++) {
-        const timestamp = i * spf;
-        console.log('encode', i, num, timestamp);
-        this.aniController.gotoAndStop(timestamp);
-        await new Promise<void>(resolve => {
-          const cb = async () => {
-            const bitmap = await createImageBitmap(this.canvas!);
-            const videoFrame = new VideoFrame(bitmap, {
-              timestamp: timestamp * 1e3,
-              duration: spf * 1e3,
-            });
-            worker.postMessage({
-              type: EncoderType.VIDEO_FRAME,
-              videoFrame,
-            }, [videoFrame]);
-            worker.onmessage = (e: MessageEvent<{
-              type: EncoderEvent,
-              buffer: ArrayBuffer,
-            }>) => {
-              if (e.data.type === EncoderEvent.PROGRESS) {
-                resolve();
-              }
-            };
-          };
-          // 可能没有刷新
-          if (this.rl === RefreshLevel.NONE) {
-            cb();
-          }
-          else {
-            this.once(REFRESH_COMPLETE, cb);
-          }
-        });
-      }
-      return new Promise<ArrayBuffer>(resolve => {
-        worker.postMessage({
-          type: EncoderType.END,
-        });
-        worker.onmessage = (e: MessageEvent<{
-          type: EncoderEvent,
-          buffer: ArrayBuffer,
-        }>) => {
-          if (e.data.type === EncoderEvent.FINISH) {
-            resolve(e.data.buffer);
-          }
-        };
-      });
-    }
+  async encode(cfg?: { duration?: number, video?: Partial<VideoEncoderConfig>, audio?: Partial<AudioEncoderConfig> }) {
+    return MbVideoEncoder.getInstance().start(this, cfg);
   }
 }
 

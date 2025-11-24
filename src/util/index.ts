@@ -3,10 +3,12 @@ import inject from './inject';
 import opentype from './opentype';
 import type from './type';
 import { loadImg } from './loadImg';
-import { loadVideo } from './loadVideo';
 import { loadAudio } from './loadAudio';
 import { loadFont } from './loadFont';
-import SmartVideoDecoder from './SmartVideoDecoder';
+import { loadRange } from './loadRangeCache';
+import MbVideoDecoder, { MbVideoDecoderEvent } from './MbVideoDecoder';
+import MbVideoEncoder, { MbVideoEncoderEvent } from './MbVideoEncoder';
+import sound from './sound';
 
 export default {
   type,
@@ -14,8 +16,12 @@ export default {
   inject,
   opentype,
   loadImg,
-  loadVideo,
   loadAudio,
   loadFont,
-  SmartVideoDecoder,
+  loadRange,
+  MbVideoDecoder,
+  MbVideoDecoderEvent,
+  MbVideoEncoder,
+  MbVideoEncoderEvent,
+  sound,
 };

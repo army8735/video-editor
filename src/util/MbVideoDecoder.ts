@@ -1,7 +1,14 @@
 import Event from './Event';
-import { DecoderEvent, DecoderType, GOPState, SimpleGOP, VideoAudioMeta } from '../decoder';
+import {
+  AudioChunk,
+  DecoderEvent,
+  DecoderType,
+  GOPState,
+  SimpleGOP,
+  VideoAudioMeta,
+  onMessage,
+} from '../decoder';
 import config from '../config';
-import { AudioChunk } from '../mp4box';
 
 export { GOPState, VideoAudioMeta };
 
@@ -25,6 +32,7 @@ export enum CacheState {
 export type CacheGOP = SimpleGOP & {
   state: GOPState,
   videoFrames: VideoFrame[],
+  // audioChunks?: AudioChunk[],
   audioBuffer?: AudioBuffer,
   audioBufferSourceNode?: AudioBufferSourceNode,
   users: MbVideoDecoder[],
@@ -36,6 +44,11 @@ type Cache = {
   loadList: [MbVideoDecoder], // 整个处理队列记录
   meta: VideoAudioMeta,
   gopList: CacheGOP[],
+  singleHash: Record<number, {
+    videoFrame: VideoFrame,
+    // audioChunks?: AudioChunk[],
+    users: MbVideoDecoder[],
+  }>, // 单帧合成模式下，按时间戳保存，同一个gop下可能多个不同时间的
   error?: string,
   count: number;
 };
@@ -43,14 +56,17 @@ type Cache = {
 const HASH: Record<string, Cache> = {};
 
 let worker: Worker;
+let noWorker = false;
 let id = 0;
 let messageId = 0;
+let spf = 0;
 
 export class MbVideoDecoder extends Event {
   url: string;
   id: number;
   currentTime: number; // 当前解析的时间
   gopIndex: number; // 当前区域索引
+  onMessage?: Function;
 
   constructor(url: string) {
     super();
@@ -73,15 +89,18 @@ export class MbVideoDecoder extends Event {
       worker = new Worker(url);
     }
     else {
-      throw new Error('Missing decoderWorker config');
+      // noWorker = true;
     }
-    worker.onmessage = (event: MessageEvent<{
+    const onMessage = (e: MessageEvent<{
       url: string,
       id: number,
       type: DecoderEvent,
       data: any,
     }>) => {
-      const { url, type, data } = event.data;
+      if (!e?.data) {
+        return;
+      }
+      const { url, type, data } = e.data;
       // console.log('main', url, type, data);
       const cache = HASH[url];
       // 预防，应该不会，除非release()了
@@ -105,26 +124,26 @@ export class MbVideoDecoder extends Event {
           item.emit(MbVideoDecoderEvent.META, data.meta);
         });
       }
-      // 服务端单帧合成时也复用这里，哪怕只有一帧，渲染时2分查找会直接返回唯一帧
-      else if (type === DecoderEvent.DECODED || type === DecoderEvent.DECODED_SINGLE) {
+      // 一个gop解码完成
+      else if (type === DecoderEvent.DECODED) {
         const gop = cache.gopList[data.index];
         if (gop) {
-          if (type === DecoderEvent.DECODED) {
-            gop.state = GOPState.DECODED;
-          }
-          else {
-            gop.state = GOPState.DECODED_SINGLE;
-          }
-          // 上一帧的结果清理（不移除user），一般用在单帧合成释放资源，普通模式下已经被清除过了
+          gop.state = GOPState.DECODED;
+          // 上一帧的结果清理（不移除user），一般已经清理过了，这里兜底
           gop.videoFrames.forEach(item => item.close());
           gop.audioBufferSourceNode?.stop();
           gop.audioBufferSourceNode?.disconnect();
           gop.audioBuffer = undefined;
           // 新资源
           gop.videoFrames = data.videoFrames;
-          if (data.audioChunks.length) {
+          // gop.audioChunks = data.audioChunks;
+          if (data.audioChunks?.length) {
             const totalFrames = data.audioChunks.reduce((sum: number, item: AudioChunk) => sum + item.numberOfFrames, 0);
-            const audioContext = new AudioContext();
+            const audioContext = new OfflineAudioContext(
+              data.audioChunks[0].numberOfChannels,
+              totalFrames,
+              data.sampleRate,
+            );
             const audioBuffer = audioContext.createBuffer(data.audioChunks[0].channels.length, totalFrames, data.sampleRate);
             let offset = 0;
             data.audioChunks.forEach((item: AudioChunk) => {
@@ -135,7 +154,6 @@ export class MbVideoDecoder extends Event {
               offset += item.numberOfFrames;
             });
             gop.audioBuffer = audioBuffer;
-            audioContext.close();
           }
           gop.users.forEach(item => {
             if (item.gopIndex === gop.index) {
@@ -148,7 +166,34 @@ export class MbVideoDecoder extends Event {
           });
         }
       }
+      // 单帧合成模式，按时间戳存储Frame
+      else if (type === DecoderEvent.DECODED_FRAME) {
+        // 防止多个同时解码，用计数器统计
+        const o = cache.singleHash[data.time] = cache.singleHash[data.time] || {
+          videoFrame: data.videoFrame,
+          // audioChunks: data.audioChunks,
+          users: [],
+        };
+        if (!o.users.includes(this)) {
+          o.users.push(this);
+        }
+        const gop = cache.gopList[data.index];
+        if (gop) {
+          gop.state = GOPState.DECODED_FRAME;
+          gop.users.forEach(item => {
+            if (item.gopIndex === gop.index && item.currentTime === data.time) {
+              item.emit(MbVideoDecoderEvent.CANPLAY, gop);
+            }
+          });
+        }
+      }
     };
+    if (worker) {
+      worker.onmessage = onMessage;
+    }
+    else {
+      this.onMessage = onMessage;
+    }
   }
 
   /**
@@ -158,6 +203,7 @@ export class MbVideoDecoder extends Event {
    */
   start(time: number) {
     this.initWorker();
+    const lastTime = this.currentTime;
     this.currentTime = time;
     const { url, id } = this;
     const cache = HASH[url];
@@ -177,6 +223,20 @@ export class MbVideoDecoder extends Event {
           cache.count++;
           this.emit(MbVideoDecoderEvent.META, cache.meta);
         }
+        // 单帧合成清除上一帧
+        if (config.singleSample && lastTime >= 0) {
+          const o = cache.singleHash[lastTime];
+          if (o) {
+            const i = o.users.indexOf(this);
+            if (i > -1) {
+              o.users.splice(i, 1);
+            }
+            if (!o.users.length) {
+              o.videoFrame.close();
+              delete cache.singleHash[lastTime];
+            }
+          }
+        }
         this.process(time);
       }
       else if (cache.state === CacheState.ERROR) {
@@ -193,16 +253,26 @@ export class MbVideoDecoder extends Event {
         fileSize: 0,
       },
       gopList: [],
+      singleHash: {},
       count: 1,
     };
-    worker.postMessage({
+    const mes = {
       url,
       id,
       type: DecoderType.META,
       messageId: messageId++,
+      isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
       preloadAll: config.preloadAll,
       gopMinDuration: config.gopMinDuration,
-    });
+    };
+    if (worker) {
+      worker.postMessage(mes);
+    }
+    else {
+      onMessage({ data: mes } as any).then(res => {
+        this.onMessage && this.onMessage(res);
+      });
+    }
   }
 
   /**
@@ -211,7 +281,7 @@ export class MbVideoDecoder extends Event {
    * @param time
    */
   process(time: number) {
-    if (time < -config.decodeDuration) {
+    if (time < -config.decodeNextDuration) {
       this.releaseGOPList();
       return;
     }
@@ -225,7 +295,7 @@ export class MbVideoDecoder extends Event {
     if (!gopList.length) {
       return;
     }
-    if (time >= duration + config.decodeDuration) {
+    if (time >= duration + config.decodeNextDuration) {
       this.releaseGOPList();
       return;
     }
@@ -237,24 +307,24 @@ export class MbVideoDecoder extends Event {
       return;
     }
     this.decodeGOP(gop, time);
-    // 服务端单帧模式不预解码，释放也是每次解码时释放之前所有的
-    if (config.singleSample) {
-      return;
-    }
     // 视频不停播放，currentTime不断更新调用，向后看currentTime+DUR以内的FramesArea也需要预加载，
     // 向前看currentTime-DUR以外的FramesArea释放清空，另外可能时间轴会跳跃任意值，向后看currentTime+DUR以外的也释放清空
     for (let i = gopIndex - 1; i >= 0; i--) {
       const gop = gopList[i];
-      if (gop && ((gop.timestamp + gop.duration) < (time - config.decodeDuration))) {
+      if (gop && ((gop.timestamp + gop.duration) < (time - config.releasePrevDuration))) {
         this.releaseGOP(gop);
       }
     }
+    // 服务端单帧合成模式不预解码，只有之前的释放
+    if (config.singleSample) {
+      return;
+    }
     for (let i = gopIndex + 1, len = gopList.length; i < len; i++) {
       const gop = gopList[i];
-      if (gop && gop.timestamp < (time + config.decodeDuration)) {
+      if (gop && gop.timestamp < (time + config.decodeNextDuration)) {
         this.decodeGOP(gop);
       }
-      else if (gop && gop.timestamp >= (time + config.decodeDuration)) {
+      else if (gop && gop.timestamp >= (time + config.decodeNextDuration)) {
         this.releaseGOP(gop);
       }
     }
@@ -265,7 +335,7 @@ export class MbVideoDecoder extends Event {
     const duration = cache.meta.duration;
     const gopList = cache.gopList;
     // 超过duration+DUR限制为空，DUR是为了防止精度计算导致最后一帧时间不太准确找不到正确索引
-    if (time < -config.decodeDuration || !gopList.length || time > duration + config.decodeDuration) {
+    if (time < -config.decodeNextDuration || !gopList.length || time > duration + config.decodeNextDuration) {
       return -1;
     }
     if (gopList.length === 1 || time <= 0) {
@@ -305,6 +375,10 @@ export class MbVideoDecoder extends Event {
     if (time < 0 || !gopList.length || time > duration) {
       return;
     }
+    // 单帧合成模式用时间戳取frame
+    if (config.singleSample) {
+      return cache.singleHash[time]?.videoFrame;
+    }
     let gop: CacheGOP | undefined;
     if (gopList.length === 1) {
       gop = gopList[0];
@@ -315,6 +389,7 @@ export class MbVideoDecoder extends Event {
         gop = gopList[i];
       }
     }
+    // 普通模式2分查找
     if (gop) {
       const list = gop.videoFrames;
       if (!list.length) {
@@ -327,7 +402,7 @@ export class MbVideoDecoder extends Event {
       while (i < j) {
         if (i === j - 1) {
           const item = list[j];
-          const timestamp = item.timestamp * 1e-6;
+          const timestamp = item.timestamp * 1e-3;
           if (timestamp <= time) {
             return item;
           }
@@ -335,8 +410,8 @@ export class MbVideoDecoder extends Event {
         }
         const mid = i + ((j - i) >> 1);
         const item = list[mid];
-        const timestamp = item.timestamp * 1e-6;
-        if (timestamp === time || timestamp < time && (timestamp + (item.duration || 0) * 1e-6) > time) {
+        const timestamp = item.timestamp * 1e-3;
+        if (timestamp === time || timestamp < time && (timestamp + (item.duration || 0) * 1e-3) > time) {
           return list[mid];
         }
         if (timestamp > time) {
@@ -371,26 +446,48 @@ export class MbVideoDecoder extends Event {
       gop.audioBufferSourceNode.disconnect();
       gop.audioBufferSourceNode = undefined;
     }
-    gop.audioBuffer = undefined;
+    // 单帧合成模式发当前时间，以及是否需要音频（第一次没有音频需解码gop的音频部分）
     if (config.singleSample) {
-      worker.postMessage({
+      const mes = {
         url: this.url,
         id,
-        type: DecoderType.DECODE_SINGLE,
+        type: DecoderType.DECODE_FRAME,
         messageId: messageId++,
+        isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
         index: gop.index,
         time,
-      });
+        mute: config.mute,
+        spf,
+      };
+      if (worker) {
+        worker.postMessage(mes);
+      }
+      else {
+        onMessage({ data: mes } as any).then(res => {
+          this.onMessage && this.onMessage(res);
+        });
+      }
     }
+    // 普通模式才清除audioBuffer
     else {
-      worker.postMessage({
+      gop.audioBuffer = undefined;
+      const mes = {
         url: this.url,
         type: DecoderType.DECODE,
         id: this.id,
         messageId: messageId++,
+        isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
         index: gop.index,
-        singleSample: config.singleSample,
-      });
+        mute: config.mute,
+      };
+      if (worker) {
+        worker.postMessage(mes);
+      }
+      else {
+        onMessage({ data: mes } as any).then(res => {
+          this.onMessage && this.onMessage(res);
+        });
+      }
     }
   }
 
@@ -408,13 +505,22 @@ export class MbVideoDecoder extends Event {
         gop.audioBufferSourceNode?.disconnect();
         gop.audioBuffer = undefined;
       }
-      worker.postMessage({
+      const mes = {
         url: this.url,
         type: DecoderType.RELEASE,
         id: this.id,
         index: gop.index,
         messageId: messageId++,
-      });
+        isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
+      };
+      if (worker) {
+        worker.postMessage(mes);
+      }
+      else {
+        onMessage({ data: mes } as any).then(res => {
+          this.onMessage && this.onMessage(res);
+        });
+      }
     }
   }
 
@@ -451,6 +557,14 @@ export class MbVideoDecoder extends Event {
 
   get currentGOP() {
     return HASH[this.url]?.gopList[this.gopIndex];
+  }
+
+  get cache() {
+    return HASH[this.url];
+  }
+
+  static set spf(v: number) {
+    spf = v;
   }
 }
 

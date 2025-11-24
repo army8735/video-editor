@@ -4,7 +4,7 @@ import CanvasCache from '../refresh/CanvasCache';
 import { loadImg, LoadImgRes } from '../util/loadImg';
 import TextureCache from '../refresh/TextureCache';
 import { LayoutData } from '../refresh/layout';
-import { OBJECT_FIT, StyleUnit } from '../style/define';
+import { OBJECT_FIT, StyleUnit, VISIBILITY } from '../style/define';
 import { RefreshLevel } from '../refresh/level';
 import { Options } from '../animation/AbstractAnimation';
 import FrameAnimation from '../animation/FrameAnimation';
@@ -28,8 +28,10 @@ class Bitmap extends Node {
     this.isPure = true;
     const src = (this._src = props.src || '');
     if (src) {
+      this.contentLoadingNum = 1;
       loadImg(src).then(res => {
         this.loader = res;
+        this.contentLoadingNum = 0;
         // 加载完且已经didMount了，触发刷新，默认第0帧
         if (res.success) {
           if (this.isMounted) {
@@ -142,6 +144,9 @@ class Bitmap extends Node {
 
   override calContent() {
     this.hasContent = false;
+    if (this.computedStyle.visibility === VISIBILITY.HIDDEN || this.computedStyle.opacity === 0) {
+      return this.hasContent;
+    }
     const loader = this.loader;
     if (loader?.success) {
       if (loader.frames.length) {

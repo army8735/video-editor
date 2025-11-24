@@ -3,15 +3,16 @@ import Video from '../node/Video';
 import Audio from '../node/Audio';
 import { VISIBILITY } from '../style/define';
 import config from '../config';
+import Lottie from '../node/Lottie';
 
 class TimeAnimation extends AbstractAnimation {
-  node: Video | Audio;
+  node: Video | Audio | Lottie;
   private _timeArea: [number, number];
   private _timeAreaR: [number, number];
   currentTimeArea: [number, number];
   originTime: number;
 
-  constructor(node: Video | Audio, start: number, options: Options) {
+  constructor(node: Video | Audio | Lottie, start: number, options: Options) {
     super(node, options);
     this.node = node;
     this._timeArea = [start, start + this.duration];
@@ -79,7 +80,7 @@ class TimeAnimation extends AbstractAnimation {
     }
     // 最后结束特殊处理，onFirstInEndDelay()根据endDelay/fill决定是否还原还是停留最后一帧，超过DUR需清空
     if (isLastCount && percent >= 1) {
-      if (node instanceof Video && time - duration >= config.decodeDuration && node.computedStyle.visibility === VISIBILITY.HIDDEN) {
+      if (node instanceof Video && time - duration >= config.releasePrevDuration && node.computedStyle.visibility === VISIBILITY.HIDDEN) {
         node.decoder?.releaseGOPList();
         node.videoFrame = undefined;
       }
@@ -109,6 +110,10 @@ class TimeAnimation extends AbstractAnimation {
 
   onChangePlayCount() {
     this.setCurrentTimeArea();
+  }
+
+  get area() {
+    return this._timeArea.slice(0);
   }
 }
 

@@ -3,6 +3,7 @@ import config from '../config';
 
 // 图片等资源复用，计数器回收
 const IMG_MAP: Record<string, { value: CanvasCache, count: number }> = {};
+const CANVAS_MAP = new WeakMap<HTMLCanvasElement, { value: CanvasCache, count: number }>();
 const VIDEO_FRAME_MAP = new WeakMap<VideoFrame, { value: CanvasCache, count: number }>();
 
 class CanvasCache {
@@ -20,6 +21,7 @@ class CanvasCache {
   }[];
   url?: string;
   videoFrame?: VideoFrame;
+  canvas?: HTMLCanvasElement;
 
   constructor(w: number, h: number, dx = 0, dy = 0) {
     this.available = false;
@@ -50,6 +52,9 @@ class CanvasCache {
     }
     if (this.videoFrame) {
       return this.releaseVideoFrame(this.videoFrame);
+    }
+    if (this.canvas) {
+      return this.releaseCanvas(this.canvas);
     }
     if (!this.available) {
       return false;
@@ -93,6 +98,23 @@ class CanvasCache {
     return true;
   }
 
+  releaseCanvas(canvas: HTMLCanvasElement) {
+    if (!this.available) {
+      return false;
+    }
+    this.available = false;
+    const o = CANVAS_MAP.get(canvas);
+    if (o) {
+      o.count--;
+      if (!o.count) {
+        // 此时无引用计数可清空且释放离屏canvas
+        CANVAS_MAP.delete(canvas);
+        this.list.splice(0).forEach(item => item.os.release());
+      }
+    }
+    return true;
+  }
+
   getCount() {
     if (this.url) {
       return IMG_MAP[this.url]?.count;
@@ -126,6 +148,21 @@ class CanvasCache {
     const res = new CanvasCache(w, h, dx, dy);
     res.videoFrame = videoFrame;
     VIDEO_FRAME_MAP.set(videoFrame, {
+      value: res,
+      count: 1,
+    });
+    return res;
+  }
+
+  static getCanvasInstance(w: number, h: number, canvas: HTMLCanvasElement, dx = 0, dy = 0) {
+    const cache = CANVAS_MAP.get(canvas);
+    if (cache) {
+      cache.count++;
+      return cache.value;
+    }
+    const res = new CanvasCache(w, h, dx, dy);
+    res.canvas = canvas;
+    CANVAS_MAP.set(canvas, {
       value: res,
       count: 1,
     });

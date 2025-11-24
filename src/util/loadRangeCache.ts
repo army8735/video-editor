@@ -36,16 +36,20 @@ function wrapIDBTransaction(transaction: IDBTransaction) {
   });
 }
 
-async function readRange(id: string) {
-  const db = await openDB();
+async function readRange(id: string, db?: IDBDatabase) {
+  if (!db) {
+    db = await openDB();
+  }
   // 开启只读事务 (readonly)
   const transaction = db.transaction(STORE_NAME, 'readonly');
   const store = transaction.objectStore(STORE_NAME);
   return wrapIDBRequest(store.get(id));
 }
 
-async function writeRange(data: any) {
-  const db = await openDB();
+async function writeRange(data: any, db?: IDBDatabase) {
+  if (!db) {
+    db = await openDB();
+  }
   // 开启读写事务 (readwrite)
   const transaction = db.transaction(STORE_NAME, 'readwrite');
   const store = transaction.objectStore(STORE_NAME);
@@ -53,12 +57,35 @@ async function writeRange(data: any) {
   await wrapIDBTransaction(transaction);
 }
 
-export async function loadRange(url: string, start: number, end: number, options?: RequestInit) {
+async function readKeyCursor(db?: IDBDatabase) {
+  if (!db) {
+    db = await openDB();
+  }
+  const transaction = db.transaction(STORE_NAME, 'readonly');
+  const store = transaction.objectStore(STORE_NAME);
+  const request = store.openKeyCursor();
+  const keys: IDBValidKey[] = [];
+  return new Promise((resolve, reject) => {
+    request.onsuccess = (e) => {
+      const cursor = request.result;
+      if (cursor) {
+        keys.push(cursor.key);
+        cursor.continue();
+      }
+      else {
+        resolve(keys);
+      }
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function loadAndStore(url: string, start: number, end: number, db: IDBDatabase, options?: RequestInit) {
   const id = url + ':' + start + '-' + end;
-  const cache = await readRange(id);
+  const cache = await readRange(id, db);
   if (cache) {
     return { status: 206, arrayBuffer: cache.arrayBuffer };
-  }
+  } console.log('miss', id);
   const response = await fetch(url, {
     ...options,
     cache: 'force-cache',
@@ -73,4 +100,30 @@ export async function loadRange(url: string, start: number, end: number, options
     return { status: 206, arrayBuffer };
   }
   return { status: response.status };
+}
+
+// 每4m数据存为一份，不足视为一份（一般是结尾）
+const PER_SIZE = 1024 * 1024 * 4;
+
+export async function loadRange(url: string, start: number, end: number, fileSize: number, options?: RequestInit) {
+  const chunks: [number, number][] = [];
+  let head = PER_SIZE * Math.floor(start / PER_SIZE);
+  const begin = head;
+  while (head <= end) {
+    const tail = Math.min(fileSize - 1, head + PER_SIZE - 1);
+    chunks.push([head, tail]);
+    head = tail + 1;
+  }
+  const db = await openDB();
+  const list = await Promise.all(chunks.map(item => loadAndStore(url, item[0], item[1], db, options)));
+  const res = new Uint8Array(chunks.length * PER_SIZE * 8);
+  for (let i = 0, len = list.length; i < len; i++) {
+    const item = list[i];
+    if (item.status !== 206) {
+      return { status: item.status };
+    }
+    const temp = new Uint8Array(item.arrayBuffer!);
+    res.set(temp, i * PER_SIZE);
+  }
+  return { status: 206, arrayBuffer: res.buffer.slice(start - begin, end - begin + 1) };
 }

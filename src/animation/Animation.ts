@@ -120,9 +120,9 @@ class Animation extends AbstractAnimation {
       percent = time / duration;
     }
     else {
-      const time = currentKeyFrame.time;
-      const total = currentKeyFrames[i + 1].time - time;
-      percent = (time - time) / total;
+      const time0 = currentKeyFrame.time;
+      const total = currentKeyFrames[i + 1].time - time0;
+      percent = (time - time0) / total;
     }
     // 最后结束特殊处理，根据endDelay/fill决定是否还原还是停留最后一帧
     if (isLastKeyFrame) {

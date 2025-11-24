@@ -2,6 +2,7 @@ import Event from '../util/Event';
 import AbstractAnimation from './AbstractAnimation';
 import TimeAnimation from './TimeAnimation';
 import Audio from '../node/Audio';
+import Video from '../node/Video';
 
 class AniController extends Event {
   aniList: AbstractAnimation[];
@@ -172,76 +173,54 @@ class AniController extends Event {
 }
 
 function checkPlayAudio(animation: AbstractAnimation) {
+  // 进度条在当前显示区域后面就不需要播了，等于已经播完了
+  if (animation.currentTime >= animation.delay + animation.duration) {
+    return;
+  }
   if (animation instanceof TimeAnimation) {
     const node = animation.node;
+    if (!(node instanceof Audio) && !(node instanceof Video)) {
+      return;
+    }
     if (node.gainNode) {
       node.gainNode.disconnect();
       node.gainNode = undefined;
     }
-    if (node instanceof Audio) {
-      if (node.audioBufferSourceNode) {
-        node.audioBufferSourceNode.stop();
-        node.audioBufferSourceNode.disconnect();
-        node.audioBufferSourceNode = undefined;
-      }
-      if (node.loader && node.loader.success && node.loader.audioBuffer && node.root) {
-        const audioBuffer = node.loader.audioBuffer;
-        const audioContext = node.root!.audioContext;
-        if (!node.gainNode) {
-          node.gainNode = audioContext.createGain();
-          node.gainNode.gain.value = node.volumn;
-        }
-        if (animation.currentTime < animation.duration + animation.delay) {
-          node.audioBufferSourceNode = audioContext.createBufferSource();
-          node.audioBufferSourceNode.buffer = audioBuffer;
-          node.audioBufferSourceNode.connect(node.gainNode);
-          node.gainNode.connect(audioContext.destination);
-          if (animation.currentTime >= animation.delay) {
-            node.audioBufferSourceNode.start(0, (animation.currentTime - animation.delay) * 0.001, (animation.duration - animation.currentTime + animation.delay) * 0.001);
-          }
-          else {
-            const delay = animation.delay - animation.currentTime;
-            node.audioBufferSourceNode.start(audioContext.currentTime + delay * 0.001, 0, animation.duration * 0.001);
-          }
-        }
-      }
-    }
     // video可能没有声音就没有AudioBuffer
-    else if (node.decoder) {
-      const currentGOP = node.decoder.currentGOP;
-      if (currentGOP?.audioBuffer && node.root) {
+    if (node.decoder) {
+      const gop = node.decoder.currentGOP;
+      if (gop?.audioBuffer && node.root) {
         const audioContext = node.root!.audioContext;
         if (!node.gainNode) {
           node.gainNode = audioContext.createGain();
           node.gainNode.gain.value = node.volumn;
         }
-        if (currentGOP.audioBufferSourceNode) {
-          currentGOP.audioBufferSourceNode.stop();
-          currentGOP.audioBufferSourceNode.disconnect();
-          currentGOP.audioBufferSourceNode = undefined;
+        if (gop.audioBufferSourceNode) {
+          gop.audioBufferSourceNode.stop();
+          gop.audioBufferSourceNode.disconnect();
+          gop.audioBufferSourceNode = undefined;
         }
-        if (animation.currentTime < animation.duration + animation.delay) {
-          const audioBufferSourceNode = audioContext.createBufferSource();
-          audioBufferSourceNode.buffer = currentGOP.audioBuffer;
-          audioBufferSourceNode.connect(node.gainNode);
-          node.gainNode.connect(audioContext.destination);
-          currentGOP.audioBufferSourceNode = audioBufferSourceNode;
-          // 当前时间进度条和区域的时间比靠后，立刻播放，offset计算是进度条减去前面的delay，然后位于当前区域的位置
-          if (animation.currentTime >= animation.delay + currentGOP.timestamp * 1e3) {
-            audioBufferSourceNode.start(
-              0,
-              (animation.currentTime - animation.delay) * 1e-3 + currentGOP.timestamp,
-              currentGOP.duration,
-            );
-          }
-          else {
-            const delay = animation.delay - animation.currentTime;
-            audioBufferSourceNode.start(
-              audioContext.currentTime + delay * 1e-3,
-              0,
-              currentGOP.duration,
-            );
-          }
+        const audioBufferSourceNode = audioContext.createBufferSource();
+        audioBufferSourceNode.buffer = gop.audioBuffer;
+        audioBufferSourceNode.connect(node.gainNode);
+        node.gainNode.connect(audioContext.destination);
+        gop.audioBufferSourceNode = audioBufferSourceNode;
+        const current = animation.currentTime - animation.delay;
+        // 正常开头或者从gop中间播放
+        if (current >= gop.audioTimestamp) {
+          audioBufferSourceNode.start(
+            0,
+            (current - gop.audioTimestamp) * 1e-3,
+            (animation.duration - current) * 1e-3,
+          );
+        }
+        // 还没开始播放
+        else {
+          audioBufferSourceNode.start(
+            audioContext.currentTime + (gop.audioTimestamp - current) * 1e-3,
+            0,
+            (animation.duration - gop.audioTimestamp) * 1e-3,
+          );
         }
         // 后面的可能解码好了，在区域非常近的情况，都是等待播放不会立刻播放
         const gopList = node.decoder.gopList;
@@ -262,11 +241,11 @@ function checkPlayAudio(animation: AbstractAnimation) {
             audioBufferSourceNode.connect(node.gainNode);
             node.gainNode.connect(audioContext.destination);
             item.audioBufferSourceNode = audioBufferSourceNode;
-            const delay = animation.delay - animation.currentTime + item.timestamp * 1e3;
+            // 最后一个可能因显示区域不播放完，如果反向显示区域更大，设置更长的duration也没事
             audioBufferSourceNode.start(
-              audioContext.currentTime + delay * 1e-3,
+              audioContext.currentTime + (item.audioTimestamp - current) * 1e-3,
               0,
-              item.duration,
+              (animation.duration - item.audioTimestamp) * 1e-3,
             );
           }
         }
@@ -278,24 +257,18 @@ function checkPlayAudio(animation: AbstractAnimation) {
 function checkStopAudio(animation: AbstractAnimation) {
   if (animation instanceof TimeAnimation) {
     const node = animation.node;
+    if (!(node instanceof Audio) && !(node instanceof Video)) {
+      return;
+    }
     if (node.gainNode) {
       node.gainNode.disconnect();
       node.gainNode = undefined;
     }
-    if (node instanceof Audio) {
-      if (node.audioBufferSourceNode) {
-        node.audioBufferSourceNode.stop();
-        node.audioBufferSourceNode.disconnect();
-        node.audioBufferSourceNode = undefined;
-      }
-    }
-    else {
-      node.decoder?.gopList?.forEach(item => {
-        item.audioBufferSourceNode?.stop();
-        item.audioBufferSourceNode?.disconnect();
-        item.audioBufferSourceNode = undefined;
-      });
-    }
+    node.decoder?.gopList?.forEach(item => {
+      item.audioBufferSourceNode?.stop();
+      item.audioBufferSourceNode?.disconnect();
+      item.audioBufferSourceNode = undefined;
+    });
   }
 }
 

@@ -14,7 +14,7 @@ import {
   StyleUnit,
   TEXT_ALIGN,
   TEXT_DECORATION,
-  TEXT_VERTICAL_ALIGN,
+  TEXT_VERTICAL_ALIGN, VISIBILITY,
 } from '../style/define';
 import inject from '../util/inject';
 import { color2rgbaStr } from '../style/color';
@@ -1006,7 +1006,14 @@ class Text extends Node {
   }
 
   override calContent() {
-    return (this.hasContent = !!this._content);
+    this.hasContent = false;
+    if (this.computedStyle.visibility === VISIBILITY.HIDDEN || this.computedStyle.opacity === 0) {
+      return this.hasContent;
+    }
+    if (this._content || this.computedStyle.backgroundColor[3] > 0) {
+      this.hasContent = true;
+    }
+    return this.hasContent;
   }
 
   override renderCanvas() {

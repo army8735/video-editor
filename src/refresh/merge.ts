@@ -14,15 +14,18 @@ export function genMerge(
   gl: WebGL2RenderingContext | WebGLRenderingContext,
   root: Root,
 ) {
-  const { structs, width: W, height: H } = root;
+  const { structs } = root;
+  root.contentLoadingCount = 0; // 归零重新计数
   for (let i = 0, len = structs.length; i < len; i++) {
-    const { node, lv, total } = structs[i];
-    const { refreshLevel, computedStyle } = node;
+    const { node } = structs[i];
+    const { refreshLevel } = node;
     node.refreshLevel = RefreshLevel.NONE;
     // 无任何变化即refreshLevel为NONE（0）忽略
     if (refreshLevel >= RefreshLevel.REPAINT) {
       node.calContent();
     }
+    // 加载中的计数
+    root.contentLoadingCount += node.calContentLoading();
   }
 }
 

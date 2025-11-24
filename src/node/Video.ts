@@ -2,23 +2,16 @@ import Node from './Node'
 import { VideoProps } from '../format';
 import TextureCache from '../refresh/TextureCache';
 import { LayoutData } from '../refresh/layout';
-import { OBJECT_FIT, StyleUnit } from '../style/define';
+import { OBJECT_FIT, StyleUnit, VISIBILITY } from '../style/define';
+import { color2rgbaStr } from '../style/color';
 import { RefreshLevel } from '../refresh/level';
+import { canvasPolygon } from '../refresh/paint';
 import CanvasCache from '../refresh/CanvasCache';
 import { Options } from '../animation/AbstractAnimation';
 import TimeAnimation from '../animation/TimeAnimation';
 import config from '../config';
-// import {
-//   CacheGOP,
-//   SmartVideoDecoder,
-//   SmartVideoDecoderEvent,
-//   VideoAudioMeta,
-//   GOPState,
-// } from '../util/SmartVideoDecoder';
 import { GOPState, MbVideoDecoder, MbVideoDecoderEvent, VideoAudioMeta } from '../util/MbVideoDecoder';
 import inject from '../util/inject';
-import { color2rgbaStr } from '../style/color';
-import { canvasPolygon } from '../refresh/paint';
 
 class Video extends Node {
   private _src: string;
@@ -28,7 +21,6 @@ class Video extends Node {
   onError?: (e: string) => void;
   onWaiting?: () => void;
   gainNode?: GainNode;
-  // private _decoder?: SmartVideoDecoder;
   private _decoder?: MbVideoDecoder;
   private _videoFrame?: VideoFrame;
   private _currentTime: number;
@@ -39,7 +31,7 @@ class Video extends Node {
   constructor(props: VideoProps) {
     super(props);
     if (props.onMeta) {
-      // this.onMeta = props.onMeta;
+      this.onMeta = props.onMeta;
     }
     if (props.onCanplay) {
       this.onCanplay = props.onCanplay;
@@ -55,10 +47,18 @@ class Video extends Node {
     this.isPure = true;
     const src = (this._src = props.src || '');
     if (src) {
-      this.contentLoading();
+      if (this._currentTime >= 0) {
+        this.contentLoadingNum = 1;
+      }
       const mbVideoDecoder = this._decoder = new MbVideoDecoder(src);
       mbVideoDecoder.on(MbVideoDecoderEvent.META, e => {
         this._metaData = e;
+        if (this._currentTime >= 0 && this._currentTime < e.duration) {
+          this.contentLoadingNum = 1;
+        }
+        else {
+          this.contentLoadingNum = 0;
+        }
         // 自适应尺寸
         if (this.isMounted) {
           const { left, top, right, bottom, width, height } = this.style;
@@ -74,127 +74,62 @@ class Video extends Node {
       });
       mbVideoDecoder.on(MbVideoDecoderEvent.ERROR, e => {
         inject.error(e);
+        this.contentLoadingNum = 0;
         if (this.onError) {
           this.onError(e);
         }
+        this.refresh();
       });
       mbVideoDecoder.on(MbVideoDecoderEvent.CANPLAY, gop => {
-        const frame = mbVideoDecoder.getFrameByTime(this._currentTime * 1e-3);
+        const frame = mbVideoDecoder.getFrameByTime(this._currentTime);
         this.videoFrame = frame;
-        this.contentLoaded();
+        this.contentLoadingNum = 0;
         if (this.onCanplay) {
           this.onCanplay();
         }
+        this.refresh();
       });
       mbVideoDecoder.on([MbVideoDecoderEvent.CANPLAY, MbVideoDecoderEvent.AUDIO_BUFFER], gop => {
         const root = this.root;
         if (!root || !gop.audioBuffer) {
           return;
         }
-        const aniController = root.aniController;
         const audioContext = root.audioContext;
         const timeAnimation = this.timeAnimation;
-        if (timeAnimation && aniController && audioContext) {
-          if (aniController.playState === 'running') {
-            const audioBufferSourceNode = audioContext.createBufferSource();
-            audioBufferSourceNode.buffer = gop.audioBuffer;
-            // 可能在结束后点击从头播放，此时没有数据
-            if (!this.gainNode) {
-              this.gainNode = audioContext.createGain();
-              this.gainNode.gain.value = this.volumn;
-              this.gainNode.connect(audioContext.destination);
-            }
-            audioBufferSourceNode.connect(this.gainNode);
-            // 特殊情况，一般不可能，除非解码卡住了，等到播放这个区域后声音才完成
-            if (aniController.currentTime >= timeAnimation.delay + gop.timestamp * 1e3) {
-              audioBufferSourceNode.start(
-                0,
-                (aniController.currentTime - timeAnimation.delay) * 1e-3 + gop.timestamp,
-                gop.duration,
-              );
-            }
-            else {
-              const delay = timeAnimation.delay - aniController.currentTime;
-              audioBufferSourceNode.start(
-                audioContext.currentTime + delay * 1e-3 + gop.timestamp,
-                0,
-                gop.duration,
-              );
-            }
+        if (timeAnimation?.playState === 'running' && audioContext) {
+          const current = timeAnimation.currentTime - timeAnimation.delay;
+          // 极端情况，解码好了但进度条已经过了
+          if (current >= gop.timestamp + gop.duration || timeAnimation.duration <= gop.timestamp) {
+            return;
+          }
+          const audioBufferSourceNode = audioContext.createBufferSource();
+          audioBufferSourceNode.buffer = gop.audioBuffer;
+          // 可能在结束后点击从头播放，此时没有数据
+          if (!this.gainNode) {
+            this.gainNode = audioContext.createGain();
+            this.gainNode.gain.value = this.volumn;
+            this.gainNode.connect(audioContext.destination);
+          }
+          audioBufferSourceNode.connect(this.gainNode);
+          // 正常开头或者从gop中间播放
+          if (current >= gop.audioTimestamp) {
+            audioBufferSourceNode.start(
+              0,
+              (current - gop.audioTimestamp) * 1e-3,
+              (timeAnimation.duration - current) * 1e-3,
+            );
+          }
+          // 提前解码完成情况，delay计算延迟播放
+          else {
+            audioBufferSourceNode.start(
+              audioContext.currentTime + (gop.audioTimestamp - current) * 1e-3,
+              0,
+              (timeAnimation.duration - gop.audioTimestamp) * 1e-3,
+            );
           }
         }
       });
-      mbVideoDecoder.start(this._currentTime * 1e-3);
-      // const smartVideoDecoder = this._decoder = new SmartVideoDecoder(src);
-      // smartVideoDecoder.on(SmartVideoDecoderEvent.META, (e: VideoAudioMeta) => {
-      //   this._metaData = e;
-      //   // 自适应尺寸
-      //   if (this.isMounted) {
-      //     const { left, top, right, bottom, width, height } = this.style;
-      //     if ((left.u === StyleUnit.AUTO || right.u === StyleUnit.AUTO) && width.u === StyleUnit.AUTO
-      //       || (top.u === StyleUnit.AUTO || bottom.u === StyleUnit.AUTO) && height.u === StyleUnit.AUTO
-      //     ) {
-      //       this.refresh(RefreshLevel.REFLOW);
-      //     }
-      //   }
-      //   if (this.onMeta) {
-      //     this.onMeta(e);
-      //   }
-      // });
-      // smartVideoDecoder.on(SmartVideoDecoderEvent.ERROR, (e: string) => {
-      //   inject.error(e);
-      //   // this.contentLoaded(); TODO
-      //   if (this.onError) {
-      //     this.onError(e);
-      //   }
-      // });
-      // smartVideoDecoder.on(SmartVideoDecoderEvent.CANPLAY, (gop: CacheGOP) => {
-      //   const frame = smartVideoDecoder.getFrameByTime(this._currentTime);
-      //   this.videoFrame = frame;
-      //   this.contentLoaded();
-      //   if (this.onCanplay) {
-      //     this.onCanplay();
-      //   }
-      // });
-      // smartVideoDecoder.on([SmartVideoDecoderEvent.CANPLAY, SmartVideoDecoderEvent.AUDIO_BUFFER], (gop: CacheGOP) => {
-      //   const root = this.root;
-      //   if (!root || !gop.audioBuffer) {
-      //     return;
-      //   }
-      //   const aniController = root.aniController;
-      //   const audioContext = root.audioContext;
-      //   const timeAnimation = this.timeAnimation;
-      //   if (timeAnimation && aniController && audioContext) {
-      //     if (aniController.playState === 'running') {
-      //       const audioBufferSourceNode = audioContext.createBufferSource();
-      //       audioBufferSourceNode.buffer = gop.audioBuffer;
-      //       // 可能在结束后点击从头播放，此时没有数据
-      //       if (!this.gainNode) {
-      //         this.gainNode = audioContext.createGain();
-      //         this.gainNode.gain.value = this.volumn;
-      //         this.gainNode.connect(audioContext.destination);
-      //       }
-      //       audioBufferSourceNode.connect(this.gainNode);
-      //       // 特殊情况，一般不可能，除非解码卡住了，等到播放这个区域后声音才完成
-      //       if (aniController.currentTime >= timeAnimation.delay + gop.relativeCts * 1e-3) {
-      //         audioBufferSourceNode.start(
-      //           0,
-      //           (aniController.currentTime - timeAnimation.delay) * 1e-3 + gop.relativeCts * 1e-6,
-      //           gop.duration * 1e-3,
-      //         );
-      //       }
-      //       else {
-      //         const delay = timeAnimation.delay - aniController.currentTime;
-      //         audioBufferSourceNode.start(
-      //           audioContext.currentTime + delay * 1e-3 + gop.relativeCts * 1e-6,
-      //           0,
-      //           gop.duration * 1e-3,
-      //         );
-      //       }
-      //     }
-      //   }
-      // });
-      // smartVideoDecoder.start(this._currentTime);
+      mbVideoDecoder.start(this._currentTime);
     }
   }
 
@@ -288,7 +223,14 @@ class Video extends Node {
   }
 
   override calContent() {
-    return this.hasContent = !!this._videoFrame || this.computedStyle.backgroundColor[3] > 0;
+    this.hasContent = false;
+    if (this.computedStyle.visibility === VISIBILITY.HIDDEN || this.computedStyle.opacity === 0) {
+      return this.hasContent;
+    }
+    if (this._videoFrame || this.computedStyle.backgroundColor[3] > 0) {
+      this.hasContent = true;
+    }
+    return this.hasContent;
   }
 
   override renderCanvas() {
@@ -465,6 +407,17 @@ class Video extends Node {
     }
   }
 
+  override calContentLoading() {
+    const res = super.calContentLoading();
+    if (res) {
+      if (this._currentTime >= 0 && this._metaData && this._currentTime < this._metaData.duration) {
+        return res;
+      }
+      return 0;
+    }
+    return res;
+  }
+
   override release() {
     super.release();
     const { _decoder, gainNode } = this;
@@ -498,19 +451,22 @@ class Video extends Node {
       this._currentTime = v;
       const decoder = this._decoder;
       if (decoder) {
-        const s = v * 1e-3;
+        const s = v;
         decoder.start(s);
-        if (this.isMounted) {
-          const old = this._videoFrame;
-          const frame = decoder.getFrameByTime(s);
-          this.videoFrame = frame;
-          if (old && !frame && this._metaData && v * 1e-3 <= this._metaData.duration) {
-            if (decoder.currentGOP?.state !== GOPState.ERROR) {
-              this.contentLoading();
-            }
-            if (this.onWaiting) {
-              this.onWaiting();
-            }
+        const old = this._videoFrame;
+        const frame = decoder.getFrameByTime(s);
+        this.videoFrame = frame;
+        if (!frame && decoder.currentGOP?.state === GOPState.DECODING && v >= 0) {
+          if (this._metaData && v < this._metaData.duration) {
+            this.contentLoadingNum = 1;
+          }
+          else {
+            this.contentLoadingNum = 1;
+          }
+        }
+        if (old && !frame && this._metaData && v >= 0 && v < this._metaData.duration) {
+          if (this.onWaiting) {
+            this.onWaiting();
           }
         }
       }

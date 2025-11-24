@@ -25,6 +25,11 @@ const VIDEO_FRAME_MAP = new WeakMap<VideoFrame, {
   count: number;
 }>();
 
+const CANVAS_MAP = new WeakMap<HTMLCanvasElement, {
+  t: WebGLTexture,
+  count: number;
+}>();
+
 export type SubTexture = {
   bbox: Float64Array;
   w: number;
@@ -41,9 +46,11 @@ class TextureCache {
   image?: HTMLImageElement;
   canvasCache?: CanvasCache;
   videoFrame?: VideoFrame;
+  canvas?: HTMLCanvasElement;
 
   constructor(gl: WebGL2RenderingContext | WebGLRenderingContext, bbox: Float64Array,
-              source?: CanvasCache | HTMLImageElement | VideoFrame, tc?: { x1: number, y1: number, x3: number, y3: number }) {
+              source?: CanvasCache | HTMLImageElement | VideoFrame | HTMLCanvasElement,
+              tc?: { x1: number, y1: number, x3: number, y3: number }) {
     this.gl = gl;
     this.bbox = bbox.slice(0);
     const maxX = bbox[2], maxY = bbox[3];
@@ -89,12 +96,22 @@ class TextureCache {
             tc,
           });
         }
-        else {
+        else if (source instanceof VideoFrame) {
           this.videoFrame = source;
           this.list.push({
             bbox: new Float64Array(bbox),
             w: source.codedWidth,
             h: source.codedHeight,
+            t,
+            tc,
+          });
+        }
+        else if (source instanceof HTMLCanvasElement) {
+          this.canvas = source;
+          this.list.push({
+            bbox: new Float64Array(bbox),
+            w: source.width,
+            h: source.height,
             t,
             tc,
           });
@@ -299,6 +316,31 @@ class TextureCache {
     }
     const res = new TextureCache(gl, bbox, videoFrame, tc);
     VIDEO_FRAME_MAP.set(videoFrame, {
+      t: res.list[0].t,
+      count: 1,
+    });
+    return res;
+  }
+
+  static getCanvasInstance(gl: WebGL2RenderingContext | WebGLRenderingContext, canvas: HTMLCanvasElement, bbox: Float64Array,
+                           tc?: { x1: number, y1: number, x3: number, y3: number }) {
+    const cache = CANVAS_MAP.get(canvas);
+    if (cache) {
+      cache.count++;
+      const res = new TextureCache(gl, bbox);
+      res.available = true;
+      res.canvas = canvas;
+      res.list = [{
+        bbox: bbox.slice(0),
+        w: canvas.width,
+        h: canvas.height,
+        t: cache.t,
+        tc,
+      }];
+      return res;
+    }
+    const res = new TextureCache(gl, bbox, canvas, tc);
+    CANVAS_MAP.set(canvas, {
       t: res.list[0].t,
       count: 1,
     });

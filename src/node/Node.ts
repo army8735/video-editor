@@ -39,7 +39,10 @@ import { clone } from '../util/type';
 import { color2rgbaStr } from '../style/color';
 import inject from '../util/inject';
 
+let id = 0;
+
 class Node extends Event {
+  id: number;
   props: Props;
   uuid: string;
   name?: string;
@@ -75,11 +78,11 @@ class Node extends Event {
   _bboxInt?: Float64Array; // 扩大取整的bbox，渲染不会糊
   _filterBboxInt?: Float64Array; // 同上
   animationList: AbstractAnimation[]; // 节点上所有的动画列表
-  protected contentLoadingNumMount: number; // 在DOM中标识当前一共有多少显示资源在加载中
-  protected contentLoadingNumUnmount: number; // 非DOM的情况下多少在加载中
+  protected contentLoadingNum: number; // 标识当前一共有多少显示资源在加载中
 
   constructor(props: Props) {
     super();
+    this.id = id++;
     this.props = props;
     this.uuid = props.uuid || uuid.v4();
     this.name = props.name;
@@ -107,8 +110,7 @@ class Node extends Event {
     this.parentMwId = 0;
     this.hasContent = false;
     this.animationList = [];
-    this.contentLoadingNumMount = 0;
-    this.contentLoadingNumUnmount = 0;
+    this.contentLoadingNum = 0;
   }
 
   didMount() {
@@ -129,12 +131,6 @@ class Node extends Event {
     this.animationList.forEach(item => {
       this.root!.aniController.addAni(item);
     });
-    // 在dom前有资源加载，比如视频，添加到dom后这些加载数量要重新计算并增加root计数
-    if (this.contentLoadingNumUnmount) {
-      this.contentLoadingNumMount += this.contentLoadingNumUnmount;
-      this.root!.contentLoadingCount += this.contentLoadingNumUnmount;
-      this.contentLoadingNumUnmount = 0;
-    }
   }
 
   didUnmount() {
@@ -152,38 +148,6 @@ class Node extends Event {
     });
     this.prev = this.next = undefined;
     this.parent = this.root = undefined;
-    // 同didMount反向转换，并减少root计数
-    if (this.contentLoadingNumMount) {
-      this.contentLoadingNumUnmount += this.contentLoadingNumMount;
-      root!.contentLoadingCount -= this.contentLoadingNumMount;
-      this.contentLoadingNumMount = 0;
-    }
-  }
-
-  protected contentLoading() {
-    if (this.root) {
-      this.contentLoadingNumMount++;
-      this.root.contentLoadingCount++;
-    }
-    else {
-      this.contentLoadingNumUnmount++;
-    }
-  }
-
-  protected contentLoaded() {
-    if (this.root) {
-      // 理论一直是>0
-      if (this.contentLoadingNumMount) {
-        this.contentLoadingNumMount--;
-        this.root.contentLoadingCount--;
-      }
-      else {
-        throw new Error('Error contentLoaded number: ' + this.contentLoadingNumMount);
-      }
-    }
-    else {
-      this.contentLoadingNumUnmount--;
-    }
   }
 
   structure(lv: number) {
@@ -510,6 +474,16 @@ class Node extends Event {
   // 是否有内容，由各个子类自己实现
   calContent() {
     return (this.hasContent = false);
+  }
+
+  calContentLoading() {
+    const computedStyle = this.computedStyle;
+    if (computedStyle.opacity <= 0
+      || computedStyle.visibility === VISIBILITY.HIDDEN
+      || !computedStyle.width || !computedStyle.height) {
+      return 0;
+    }
+    return this.contentLoadingNum;
   }
 
   renderCanvas() {
