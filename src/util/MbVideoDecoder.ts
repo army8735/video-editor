@@ -67,6 +67,7 @@ export class MbVideoDecoder extends Event {
   currentTime: number; // 当前解析的时间
   gopIndex: number; // 当前区域索引
   onMessage?: Function;
+  error: boolean;
 
   constructor(url: string) {
     super();
@@ -74,6 +75,7 @@ export class MbVideoDecoder extends Event {
     this.id = id++;
     this.currentTime = -Infinity;
     this.gopIndex = -1;
+    this.error = false;
   }
 
   initWorker() {
@@ -136,7 +138,6 @@ export class MbVideoDecoder extends Event {
           gop.audioBuffer = undefined;
           // 新资源
           gop.videoFrames = data.videoFrames;
-          // gop.audioChunks = data.audioChunks;
           if (data.audioChunks?.length) {
             const totalFrames = data.audioChunks.reduce((sum: number, item: AudioChunk) => sum + item.numberOfFrames, 0);
             const audioContext = new OfflineAudioContext(
@@ -171,7 +172,6 @@ export class MbVideoDecoder extends Event {
         // 防止多个同时解码，用计数器统计
         const o = cache.singleHash[data.time] = cache.singleHash[data.time] || {
           videoFrame: data.videoFrame,
-          // audioChunks: data.audioChunks,
           users: [],
         };
         if (!o.users.includes(this)) {
@@ -180,12 +180,36 @@ export class MbVideoDecoder extends Event {
         const gop = cache.gopList[data.index];
         if (gop) {
           gop.state = GOPState.DECODED_FRAME;
+          if (data.audioChunks?.length) {
+            const totalFrames = data.audioChunks.reduce((sum: number, item: AudioChunk) => sum + item.numberOfFrames, 0);
+            const audioContext = new OfflineAudioContext(
+              data.audioChunks[0].numberOfChannels,
+              totalFrames,
+              data.sampleRate,
+            );
+            const audioBuffer = audioContext.createBuffer(data.audioChunks[0].channels.length, totalFrames, data.sampleRate);
+            let offset = 0;
+            data.audioChunks.forEach((item: AudioChunk) => {
+              for (let ch = 0; ch < item.channels.length; ch++) {
+                const channelData = audioBuffer.getChannelData(ch);
+                channelData.set(item.channels[ch], offset);
+              }
+              offset += item.numberOfFrames;
+            });
+            gop.audioBuffer = audioBuffer;
+          }
           gop.users.forEach(item => {
             if (item.gopIndex === gop.index && item.currentTime === data.time) {
               item.emit(MbVideoDecoderEvent.CANPLAY, gop);
             }
           });
         }
+      }
+      else if (type === DecoderEvent.ERROR) {
+        cache.metaList.forEach(item => {
+          item.error = true;
+          item.emit(MbVideoDecoderEvent.ERROR, data);
+        });
       }
     };
     if (worker) {
@@ -232,7 +256,8 @@ export class MbVideoDecoder extends Event {
               o.users.splice(i, 1);
             }
             if (!o.users.length) {
-              o.videoFrame.close();
+              // 可能音频没有
+              o.videoFrame?.close();
               delete cache.singleHash[lastTime];
             }
           }

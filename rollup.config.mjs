@@ -8,7 +8,7 @@ import terser from '@rollup/plugin-terser';
 
 const publicConfig = {
   format: 'umd',
-  name: 'videoEditor',
+  name: 'kronoFlow',
   sourcemap: true,
 };
 

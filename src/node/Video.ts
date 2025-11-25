@@ -12,6 +12,7 @@ import TimeAnimation from '../animation/TimeAnimation';
 import config from '../config';
 import { GOPState, MbVideoDecoder, MbVideoDecoderEvent, VideoAudioMeta } from '../util/MbVideoDecoder';
 import inject from '../util/inject';
+import { CAN_PLAY, ERROR, META, WAITING } from '../refresh/refreshEvent';
 
 class Video extends Node {
   private _src: string;
@@ -71,6 +72,7 @@ class Video extends Node {
         if (this.onMeta) {
           this.onMeta(e);
         }
+        this.emit(META, e);
       });
       mbVideoDecoder.on(MbVideoDecoderEvent.ERROR, e => {
         inject.error(e);
@@ -78,6 +80,7 @@ class Video extends Node {
         if (this.onError) {
           this.onError(e);
         }
+        this.emit(ERROR, e);
         this.refresh();
       });
       mbVideoDecoder.on(MbVideoDecoderEvent.CANPLAY, gop => {
@@ -87,6 +90,7 @@ class Video extends Node {
         if (this.onCanplay) {
           this.onCanplay();
         }
+        this.emit(CAN_PLAY);
         this.refresh();
       });
       mbVideoDecoder.on([MbVideoDecoderEvent.CANPLAY, MbVideoDecoderEvent.AUDIO_BUFFER], gop => {
@@ -410,8 +414,15 @@ class Video extends Node {
   override calContentLoading() {
     const res = super.calContentLoading();
     if (res) {
-      if (this._currentTime >= 0 && this._metaData && this._currentTime < this._metaData.duration) {
-        return res;
+      if (this._currentTime >= 0) {
+        if (this._metaData) {
+          if (this._currentTime < this._metaData.duration) {
+            return res;
+          }
+        }
+        else {
+          return res;
+        }
       }
       return 0;
     }
@@ -456,7 +467,8 @@ class Video extends Node {
         const old = this._videoFrame;
         const frame = decoder.getFrameByTime(s);
         this.videoFrame = frame;
-        if (!frame && decoder.currentGOP?.state === GOPState.DECODING && v >= 0) {
+        // console.log(v, frame)
+        if (!frame && decoder.currentGOP?.state === GOPState.DECODING && v >= 0 && !decoder.error) {
           if (this._metaData && v < this._metaData.duration) {
             this.contentLoadingNum = 1;
           }
@@ -464,10 +476,11 @@ class Video extends Node {
             this.contentLoadingNum = 1;
           }
         }
-        if (old && !frame && this._metaData && v >= 0 && v < this._metaData.duration) {
+        if (old && !frame && this._metaData && v >= 0 && v < this._metaData.duration && !decoder.error) {
           if (this.onWaiting) {
             this.onWaiting();
           }
+          this.emit(WAITING);
         }
       }
     }

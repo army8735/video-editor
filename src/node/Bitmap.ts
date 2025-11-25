@@ -11,6 +11,7 @@ import FrameAnimation from '../animation/FrameAnimation';
 import config from '../config';
 import { color2rgbaStr } from '../style/color';
 import { canvasPolygon } from '../refresh/paint';
+import { LOAD } from '../refresh/refreshEvent';
 
 class Bitmap extends Node {
   _src: string;
@@ -48,6 +49,7 @@ class Bitmap extends Node {
           if (this.onLoad) {
             this.onLoad();
           }
+          this.emit(LOAD);
         }
       });
     }

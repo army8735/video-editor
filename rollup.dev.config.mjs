@@ -7,7 +7,7 @@ import postcss from 'rollup-plugin-postcss';
 
 const publicConfig = {
   format: 'umd',
-  name: 'videoEditor',
+  name: 'kronoFlow',
   sourcemap: true,
 };
 
@@ -81,6 +81,26 @@ export default [
       postcss({
         extract: true,
       }),
+    ],
+  },
+  {
+    input: 'demo/juchuang2aichuang.ts',
+    output: [
+      {
+        file: 'demo/juchuang2aichuang.js',
+        format: 'umd',
+        name: 'juchuang2aichuang',
+        sourcemap: true,
+      },
+    ],
+    plugins: [
+      nodeResolve({ preferBuiltins: false }),
+      commonjs(),
+      typescript({
+        declaration: false,
+        target: "ES5",
+      }),
+      json(),
     ],
   },
 ];

@@ -43,8 +43,6 @@ export const onMessage = async (e: MessageEvent<{
   duration: number,
   videoFrame: VideoFrame,
   videoEncoderConfig: VideoEncoderConfig,
-  // audioChunks?: AudioChunk[],
-  audioBuffers: { id: number, data: AudioBuffer, volume: number, timestamp: number }[],
   audioList: { audioChunk: AudioChunk, volume: number }[],
   audioEncoderConfig: AudioEncoderConfig,
   mute: boolean,
@@ -200,17 +198,6 @@ export const onMessage = async (e: MessageEvent<{
       if (audioList.length) {
         for (let i = 0, len = audioList.length; i < len; i++) {
           const { audioChunk, volume } = audioList[i];
-          // const audioContext = new OfflineAudioContext(
-          //   audioChunk.numberOfChannels,
-          //   audioChunk.numberOfFrames,
-          //   audioChunk.sampleRate,
-          // );
-          // const audioBuffer = audioContext.createBuffer(audioChunk.channels.length, audioChunk.numberOfFrames, audioChunk.sampleRate);
-          // for (let ch = 0; ch < audioChunk.channels.length; ch++) {
-          //   const channelData = audioBuffer.getChannelData(ch);
-          //   channelData.set(audioChunk.channels[ch], 0);
-          // }
-          // const newBuffer = await reSample(audioBuffer, numberOfChannels, sampleRate);
           // 计算当前时间在整体的偏移frame位置
           const frameOffset = Math.round(audioChunk.timestamp * 1e-3 * sampleRate);
           const length = audioChunk.numberOfFrames;
@@ -218,7 +205,6 @@ export const onMessage = async (e: MessageEvent<{
             const masterChannel = masterChannels[i];
             // 直接获取每个声道的 Float32Array 数据
             const d = audioChunk.channels[i];
-            // console.log(d);
             for (let j = 0; j < length; j++) {
               const index = frameOffset + j;
               // 简单的增益控制clamping
@@ -254,7 +240,7 @@ export const onMessage = async (e: MessageEvent<{
       }
       didAudio = true;
     }
-    else if (!e.data.mute) {
+    else if (e.data.mute) {
       didAudio = true;
     }
     return pm;

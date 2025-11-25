@@ -48,4 +48,5 @@ export default {
   preloadAll: false, // 是否全部加载模式而不是默认分段
   singleSample: false, // 单帧模式，服务端合成时内存资源紧张，使用单帧解码渲染释放再合成
   mute: false, // 全局静音，不解码合成音频部分
+  indexedDB: false,
 };

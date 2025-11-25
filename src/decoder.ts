@@ -52,6 +52,7 @@ export type GOP = {
   audioTimestamp: number,
   audioDuration: number,
   users: number[], // smartVideoDecoder的id
+  didAudioChunk?: boolean, // singleSample模式下音频不能一份份的，第一次解码时解析
 };
 
 export type SimpleGOP = Pick<GOP,
@@ -350,7 +351,8 @@ export const onMessage = async (e: MessageEvent<{
     let sampleRate = 0;
     let audioTimeStamp = -1;
     let audioDuration = 0;
-    if (fileData.audioTrack && !e.data.mute) {
+    if (fileData.audioTrack && !e.data.mute && !gop.didAudioChunk) {
+      gop.didAudioChunk = true;
       const sink = new AudioSampleSink(fileData.audioTrack);
       const start = gop.timestamp * 1e-3;
       const end = (gop.timestamp + gop.duration) * 1e-3;
@@ -387,6 +389,7 @@ export const onMessage = async (e: MessageEvent<{
     }
     // 防止被释放
     if (gop.state !== GOPState.DECODING) {
+      gop.didAudioChunk = false;
       videoFrames.forEach(item => {
         item.close();
       });
@@ -435,22 +438,36 @@ export const onMessage = async (e: MessageEvent<{
         sample.close();
       }
     }
-    let audioChunks: AudioChunk[] | undefined;
+    const audioChunks: AudioChunk[] = [];
     let sampleRate = 0;
-    if (fileData.audioTrack && !e.data.mute) {
-      audioChunks = [];
+    let audioTimeStamp = -1;
+    let audioDuration = 0;
+    if (fileData.audioTrack && !e.data.mute && !gop.didAudioChunk) {
+      gop.didAudioChunk = true;
       const sink = new AudioSampleSink(fileData.audioTrack);
-      for await (const sample of sink.samples(time * 1e-3, (time + e.data.spf) * 1e-3)) {
+      const start = gop.timestamp * 1e-3;
+      const end = (gop.timestamp + gop.duration) * 1e-3;
+      const samples = sink.samples(start, end);
+      for await (const sample of samples) {
         sampleRate = sample.sampleRate;
-        const { format, numberOfChannels, numberOfFrames, timestamp, duration } = sample;
+        const { numberOfChannels, numberOfFrames, timestamp, duration } = sample;
+        // 位于2个gop之间的sample归属上一个gop
+        if (timestamp >= end && gop.index < fileData.gopList.length - 1 || timestamp < start) {
+          continue;
+        }
+        if (audioTimeStamp === -1) {
+          audioTimeStamp = timestamp * 1e3;
+        }
+        audioDuration = timestamp * 1e3 - audioTimeStamp + duration * 1e3;
         const channels: Float32Array[] = [];
         for (let ch = 0; ch < numberOfChannels; ch++) {
           const tmp = new Float32Array(numberOfFrames);
-          sample.copyTo(tmp, { planeIndex: ch, format: sample.format });
+          // audioBuffer只支持f32
+          sample.copyTo(tmp, { planeIndex: ch, format: 'f32-planar' });
           channels.push(tmp);
         }
         audioChunks.push({
-          format,
+          format: 'f32-planar',
           channels,
           sampleRate,
           numberOfFrames,
@@ -481,6 +498,8 @@ export const onMessage = async (e: MessageEvent<{
         videoFrame,
         audioChunks,
         sampleRate,
+        audioTimeStamp,
+        audioDuration,
       },
     };
     if (isWorker) {

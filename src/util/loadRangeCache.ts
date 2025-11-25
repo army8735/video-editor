@@ -1,3 +1,5 @@
+import config from '../config';
+
 const META_DB_NAME = 'VideoEditorDB';
 const META_DB_VERSION = 1;
 const STORE_NAME = 'VideoRange';
@@ -106,6 +108,21 @@ async function loadAndStore(url: string, start: number, end: number, db: IDBData
 const PER_SIZE = 1024 * 1024 * 4;
 
 export async function loadRange(url: string, start: number, end: number, fileSize: number, options?: RequestInit) {
+  if (!config.indexedDB) {
+    const response = await fetch(url, {
+      ...options,
+      cache: 'force-cache',
+      headers: {
+        'Cache-Control': 'max-age=31536000',
+        Range: `bytes=${start}-${end}`,
+      },
+    });
+    if (response.status === 206) {
+      const arrayBuffer = await response.arrayBuffer();
+      return { status: 206, arrayBuffer };
+    }
+    return { status: response.status };
+  }
   const chunks: [number, number][] = [];
   let head = PER_SIZE * Math.floor(start / PER_SIZE);
   const begin = head;

@@ -5,6 +5,7 @@ import { Options } from '../animation/AbstractAnimation';
 import TimeAnimation from '../animation/TimeAnimation';
 import { GOPState, MbVideoDecoder, MbVideoDecoderEvent, VideoAudioMeta } from '../util/MbVideoDecoder';
 import inject from '../util/inject';
+import { CAN_PLAY, ERROR, META, WAITING } from '../refresh/refreshEvent';
 
 class Audio extends Node {
   private _src: string;
@@ -54,6 +55,7 @@ class Audio extends Node {
         if (this.onMeta) {
           this.onMeta(e);
         }
+        this.emit(META);
       });
       mbVideoDecoder.on(MbVideoDecoderEvent.ERROR, e => {
         inject.error(e);
@@ -61,6 +63,7 @@ class Audio extends Node {
         if (this.onError) {
           this.onError(e);
         }
+        this.emit(ERROR);
         this.refresh();
       });
       mbVideoDecoder.on(MbVideoDecoderEvent.CANPLAY, gop => {
@@ -68,6 +71,7 @@ class Audio extends Node {
         if (this.onCanplay) {
           this.onCanplay();
         }
+        this.emit(CAN_PLAY);
         this.refresh();
       });
       mbVideoDecoder.on([MbVideoDecoderEvent.CANPLAY, MbVideoDecoderEvent.AUDIO_BUFFER], gop => {
@@ -115,10 +119,21 @@ class Audio extends Node {
   }
 
   override calContentLoading() {
-    if (this._currentTime >= 0 && this._metaData && this._currentTime < this._metaData.duration) {
-      return this.contentLoadingNum;
+    const res = super.calContentLoading();
+    if (res) {
+      if (this._currentTime >= 0) {
+        if (this._metaData) {
+          if (this._currentTime < this._metaData.duration) {
+            return res;
+          }
+        }
+        else {
+          return res;
+        }
+      }
+      return 0;
     }
-    return 0;
+    return res;
   }
 
   override release() {
@@ -163,7 +178,7 @@ class Audio extends Node {
         const old = decoder.currentGOP;
         decoder.start(s);
         const now = decoder.currentGOP;
-        if (!now?.audioBuffer && now?.state === GOPState.DECODING && v >= 0) {
+        if (!now?.audioBuffer && now?.state === GOPState.DECODING && v >= 0 && !decoder.error) {
           if (this._metaData && v < this._metaData.duration) {
             this.contentLoadingNum = 1;
           }
@@ -171,10 +186,11 @@ class Audio extends Node {
             this.contentLoadingNum = 1;
           }
         }
-        if (old?.audioBuffer && !now?.audioBuffer && this._metaData && v >= 0 && v < this._metaData.duration) {
+        if (old?.audioBuffer && !now?.audioBuffer && this._metaData && v >= 0 && v < this._metaData.duration && !decoder.error) {
           if (this.onWaiting) {
             this.onWaiting();
           }
+          this.emit(WAITING);
         }
       }
     }

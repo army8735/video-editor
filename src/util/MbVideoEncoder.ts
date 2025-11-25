@@ -3,7 +3,7 @@ import Lottie from '../node/Lottie';
 import Event from './Event';
 import config from '../config';
 import { EncoderEvent, EncoderType, onMessage } from '../encoder';
-import { CAN_PLAY } from '../refresh/refreshEvent';
+import { CAN_PLAY, REFRESH_COMPLETE } from '../refresh/refreshEvent';
 import TimeAnimation from '../animation/TimeAnimation';
 import MbVideoDecoder from './MbVideoDecoder';
 import { reSample, sliceAudioBuffer } from './sound';
@@ -94,9 +94,10 @@ export class MbVideoEncoder extends Event {
     // 记录每个node的当前时间的音频有没有提取过，避免encode重复，已node的id+时间做key
     const audioRecord: Record<string, true> = {};
     // 先跳到后面某帧，随后从第一帧开始，以便触发音频解码
-    root.aniController.gotoAndStop(1000);
+    // root.aniController.gotoAndStop(1000);
     for (let i = 0; i < num; i++) {
       const timestamp = i * spf;
+      console.warn('encode>>>>>>>>>>>>>>>>', i, num, timestamp);
       root.aniController.gotoAndStop(timestamp);
       // console.log('encode', i, num, timestamp);
       this.emit(MbVideoEncoderEvent.PROGRESS, i, num, true);
@@ -108,56 +109,57 @@ export class MbVideoEncoder extends Event {
             duration: spf * 1e3,
           });
           const audioList: { audioChunk: AudioChunk, volume: number }[] = [];
-          for (let i = 0, len = root.aniController.aniList.length; i < len; i++) {
-            const item = root.aniController.aniList[i];
-            const { delay, duration } = item;
-            // 范围内的声音才有效
-            if (item instanceof TimeAnimation
-              && item.currentTime >= delay
-              && item.currentTime < duration + delay
-            ) {
-              const node = item.node;
-              if (node instanceof Lottie || !node.volumn) {
-                continue;
+          if (!config.mute) {
+            for (let i = 0, len = root.aniController.aniList.length; i < len; i++) {
+              const item = root.aniController.aniList[i];
+              const { delay, duration } = item;
+              // 范围内的声音才有效
+              if (item instanceof TimeAnimation
+                && item.currentTime >= delay
+                && item.currentTime < duration + delay
+              ) {
+                const node = item.node;
+                if (node instanceof Lottie || !node.volumn) {
+                  continue;
+                }
+                const decoder = node.decoder;
+                if (!decoder) {
+                  continue;
+                }
+                const gop = decoder.currentGOP;
+                if (!gop) {
+                  continue;
+                }
+                const audioBuffer = gop.audioBuffer;
+                if (!audioBuffer) {
+                  continue;
+                }
+                const key = node.id + '-' + gop.index;
+                if (audioRecord[key]) {
+                  continue;
+                }
+                audioRecord[key] = true;
+                const diff = gop.audioTimestamp - gop.timestamp;
+                const slice = sliceAudioBuffer(audioBuffer, 0, item.duration - gop.audioTimestamp);
+                const newBuffer = await reSample(slice, audioEncoderConfig.numberOfChannels, audioEncoderConfig.sampleRate);
+                const channels: Float32Array[] = [];
+                for (let ch = 0; ch < audioEncoderConfig.numberOfChannels; ch++) {
+                  const data = newBuffer.getChannelData(ch);
+                  channels.push(data);
+                }
+                audioList.push({
+                  audioChunk: {
+                    format: 'f32-planar',
+                    channels,
+                    sampleRate: audioEncoderConfig.sampleRate,
+                    numberOfChannels: audioEncoderConfig.numberOfChannels,
+                    numberOfFrames: newBuffer.length,
+                    timestamp: timestamp + diff,
+                    duration: newBuffer.duration * 1e3,
+                  },
+                  volume: node.volumn,
+                });
               }
-              const decoder = node.decoder;
-              if (!decoder) {
-                continue;
-              }
-              const gop = decoder.currentGOP;
-              if (!gop) {
-                continue;
-              }
-              const audioBuffer = gop.audioBuffer;
-              if (!audioBuffer) {
-                continue;
-              }
-              const key = node.id + '-' + gop.index;
-              if (audioRecord[key]) {
-                continue;
-              }
-              audioRecord[key] = true;
-              const diff = gop.audioTimestamp - gop.timestamp;
-              const buffer = sliceAudioBuffer(audioBuffer, 0, item.duration - gop.audioTimestamp);
-              const { duration } = buffer;
-              const newBuffer = await reSample(buffer, audioEncoderConfig.numberOfChannels, audioEncoderConfig.sampleRate);
-              const channels: Float32Array[] = [];
-              for (let ch = 0; ch < audioEncoderConfig.numberOfChannels; ch++) {
-                const data = newBuffer.getChannelData(ch);
-                channels.push(data);
-              }
-              audioList.push({
-                audioChunk: {
-                  format: 'f32-planar',
-                  channels,
-                  sampleRate: audioEncoderConfig.sampleRate,
-                  numberOfChannels: audioEncoderConfig.numberOfChannels,
-                  numberOfFrames: buffer.length,
-                  timestamp: timestamp + diff,
-                  duration: duration * 1e3,
-                },
-                volume: node.volumn,
-              });
             }
           }
           const messageCb = (e: MessageEvent<{
@@ -208,15 +210,12 @@ export class MbVideoEncoder extends Event {
         if (root.contentLoadingCount) {
           root.once(CAN_PLAY, frameCb);
         }
+        else if (root.rl) {
+          root.once(REFRESH_COMPLETE, frameCb);
+        }
         else {
           frameCb();
         }
-        // if (root.rl === RefreshLevel.NONE) {
-        //   cb();
-        // }
-        // else {
-        //   root.once(REFRESH_COMPLETE, cb);
-        // }
       });
     }
     return new Promise<ArrayBuffer>(resolve => {

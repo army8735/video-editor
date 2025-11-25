@@ -8,6 +8,7 @@ import { color2rgbaStr } from '../style/color';
 import { canvasPolygon } from '../refresh/paint';
 import { Options } from '../animation/AbstractAnimation';
 import TimeAnimation from '../animation/TimeAnimation';
+import { LOAD, META } from '../refresh/refreshEvent';
 
 class Lottie extends Node {
   private _src?: string;
@@ -42,6 +43,7 @@ class Lottie extends Node {
       if (this.onMeta) {
         this.onMeta(this._metaData);
       }
+      this.emit(META, this._metaData);
       const div = document.createElement('div');
       div.style.width = this._json!.w + 'px';
       div.style.height = this._json!.h + 'px';
@@ -79,6 +81,7 @@ class Lottie extends Node {
         if (this.onLoad) {
           this.onLoad();
         }
+        this.emit(LOAD);
       });
     };
     if (props.src) {

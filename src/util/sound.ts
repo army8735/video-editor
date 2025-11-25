@@ -111,22 +111,19 @@ export async function reSample(
   return await targetContext.startRendering();
 }
 
-export function sliceAudioBuffer(audioBuffer: AudioBuffer, start: number, end: number, copy = false) {
+export function sliceAudioBuffer(audioBuffer: AudioBuffer, start: number, end: number) {
   const startFrame = Math.floor(start * 1e-3 * audioBuffer.sampleRate);
   const endFrame = Math.min(Math.ceil(end * 1e-3 * audioBuffer.sampleRate), audioBuffer.length);
   if (startFrame > endFrame || startFrame >= audioBuffer.length) {
     throw new Error('Invalid range');
   }
-  // if (startFrame === 0 && endFrame >= audioBuffer.length - 1) {
-  //   return audioBuffer;
-  // }
+  if (startFrame === 0 && endFrame >= audioBuffer.length - 1) {
+    return audioBuffer;
+  }
   const context = new OfflineAudioContext(audioBuffer.numberOfChannels, endFrame - startFrame + 1, audioBuffer.sampleRate);
   const buffer = context.createBuffer(audioBuffer.numberOfChannels, endFrame - startFrame + 1, audioBuffer.sampleRate);
   for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
-    let data = audioBuffer.getChannelData(i);
-    if (copy) {
-      data = data.slice(0);
-    }
+    const data = audioBuffer.getChannelData(i);
     const view = data.subarray(startFrame, endFrame + 1);
     buffer.copyToChannel(view, i, 0);
   }

@@ -190,6 +190,7 @@ const inject = {
     if (typeof document !== 'undefined' && typeof FontFace !== 'undefined') {
       const ff = new FontFace(postscriptName, ab);
       await ff.load();
+      // @ts-ignore
       document.fonts.add(ff);
     }
   },
@@ -197,6 +198,7 @@ const inject = {
     if (typeof document !== 'undefined' && typeof FontFace !== 'undefined') {
       const ff = new FontFace(postscriptName, `local(${postscriptName}`);
       await ff.load();
+      // @ts-ignore
       document.fonts.add(ff);
     }
   },
