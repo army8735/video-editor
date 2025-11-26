@@ -1458,7 +1458,6 @@ class Text extends Node {
         }
       }
     }
-    console.log(cursor);
   }
 
   /**
