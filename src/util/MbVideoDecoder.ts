@@ -415,7 +415,7 @@ export class MbVideoDecoder extends Event {
       }
     }
     // 普通模式2分查找
-    if (gop) {
+    if (gop && gop.state === GOPState.DECODED) {
       const list = gop.videoFrames;
       if (!list.length) {
         return;
@@ -453,14 +453,14 @@ export class MbVideoDecoder extends Event {
     if (gop.state === GOPState.ERROR) {
       return;
     }
+    if (!gop.users.includes(this)) {
+      gop.users.push(this);
+    }
     // 线程异步可能别的gop解码完成了，也可能自己解码完成，播放时不停调用
     if (gop.state === GOPState.DECODED) {
       return;
     }
     // 剩下只有可能NONE或者DECODING状态了，去重记录发起方id
-    if (!gop.users.includes(this)) {
-      gop.users.push(this);
-    }
     if (gop.state === GOPState.DECODING) {
       return;
     }

@@ -467,11 +467,12 @@ class Video extends Node {
         const old = this._videoFrame;
         const frame = decoder.getFrameByTime(s);
         this.videoFrame = frame;
-        // console.log(v, frame)
+        this.contentLoadingNum = 0;
         if (!frame && decoder.currentGOP?.state === GOPState.DECODING && v >= 0 && !decoder.error) {
           if (this._metaData && v < this._metaData.duration) {
             this.contentLoadingNum = 1;
           }
+          // 没有metaData也认为在加载中，加载meta之后会重新判断
           else {
             this.contentLoadingNum = 1;
           }
