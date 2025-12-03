@@ -480,7 +480,7 @@ function genFilter(
       root,
       res || source,
       blur.radius,
-      blur.angle!,
+      blur.angle || 0, // 一定有，0兜底
       W,
       H,
     );
@@ -1102,8 +1102,7 @@ function genMotionBlur(
   H: number,
 ) {
   const radian = d2r(angle);
-  const d = kernelSize(sigma);
-  const spread = outerSizeByD(d);
+  const spread = sigma * 2;
   const bboxS = textureTarget.bbox;
   const bboxR = bboxS.slice(0);
   const sin = Math.sin(radian);
@@ -1130,8 +1129,6 @@ function genMotionBlur(
   const listT = temp.list;
   // 由于存在扩展，原本的位置全部偏移，需要重算
   const frameBuffer = drawInSpreadBbox(gl, program, textureTarget, temp, x, y, w2, h2);
-  const sigma2 = sigma;
-  const d2 = kernelSize(sigma2);
   // 迭代运动模糊，先不考虑多块情况下的边界问题，各个块的边界各自为政
   const programMotion = programs.motionProgram;
   gl.useProgram(programMotion);
@@ -1141,7 +1138,8 @@ function genMotionBlur(
   for (let i = 0, len = listT.length; i < len; i++) {
     const { bbox, w, h, t } = listT[i];
     gl.viewport(0, 0, w, h);
-    const tex = t && drawMotion(gl, programMotion, t, d2, radian, w, h);
+    // sigma要么为0不会进入，要么>=1，*2后最小值为2，不会触发glsl中kernel的/0问题
+    const tex = t && drawMotion(gl, programMotion, t, spread, radian, w, h);
     listR.push({
       bbox: bbox.slice(0),
       w,
@@ -1200,7 +1198,7 @@ function genMotionBlur(
       }
       if (hasDraw) {
         gl.useProgram(programMotion);
-        item.t = drawMotion(gl, programMotion, t, d2, radian, w, h);
+        item.t = drawMotion(gl, programMotion, t, spread, radian, w, h);
       }
       gl.deleteTexture(t);
     }

@@ -485,9 +485,16 @@ export function normalize(style: Partial<JStyle>) {
     const v = reg.blur.exec(blur);
     if (v) {
       const t = v[1].toLowerCase();
+      let n = parseFloat(v[2]);
+      if (n > 0) {
+        n = Math.max(n, 1);
+      }
+      else {
+        n = 0;
+      }
       if (t === 'gauss') {
         res.blur = {
-          v: { t: BLUR.GAUSSIAN, radius: { v: parseFloat(v[2]) || 0, u: StyleUnit.PX } },
+          v: { t: BLUR.GAUSSIAN, radius: { v: n, u: StyleUnit.PX } },
           u: StyleUnit.BLUR,
         };
       }
@@ -500,7 +507,7 @@ export function normalize(style: Partial<JStyle>) {
         res.blur = {
           v: {
             t: BLUR.BACKGROUND,
-            radius: { v: parseInt(v[2]) || 0, u: StyleUnit.PX },
+            radius: { v: n, u: StyleUnit.PX },
             saturation: { v: saturation, u: StyleUnit.PERCENT },
           },
           u: StyleUnit.BLUR,
@@ -523,7 +530,7 @@ export function normalize(style: Partial<JStyle>) {
           }
         }
         res.blur = {
-          v: { t: BLUR.RADIAL, radius: { v: parseFloat(v[2]) || 0, u: StyleUnit.PX }, center },
+          v: { t: BLUR.RADIAL, radius: { v: n, u: StyleUnit.PX }, center },
           u: StyleUnit.BLUR
         };
       }
@@ -725,6 +732,16 @@ export function cloneStyle(style: Partial<Style>, keys?: string | string[]) {
     }
     if (k === 'transformOrigin') {
       res[k] = [Object.assign({}, v[0]), Object.assign({}, v[1])];
+    }
+    else if (k === 'blur') {
+      res[k] = {
+        v: {
+          t: v.v.t,
+          radius: Object.assign({}, v.v.radius),
+          angle: Object.assign({}, v.v.angle),
+        },
+        u: v.u,
+      };
     }
     else {
       // @ts-ignore

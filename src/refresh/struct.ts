@@ -1,9 +1,9 @@
 import Node from '../node/Node';
 import Root from '../node/Root';
-import { checkInScreen, genFrameBufferWithTexture, genMerge, releaseFrameBuffer, shouldIgnore } from './merge';
+import { checkInScreen, genMerge, shouldIgnore } from './merge';
 import { assignMatrix, multiply } from '../math/matrix';
 import Container from '../node/Container';
-import { drawTextureCache, texture2Blob } from '../gl/webgl';
+import { drawTextureCache } from '../gl/webgl';
 
 export type Struct = {
   node: Node;
@@ -72,7 +72,6 @@ export function renderWebgl(
           texture: t,
           tc,
         }], 0, 0, true);
-        texture2Blob(gl, W, H);
       }
     }
     // 有局部子树缓存可以跳过其所有子孙节点

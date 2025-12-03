@@ -3,7 +3,7 @@ import Node from '../node/Node';
 import { JStyle } from '../format';
 import easing from './easing';
 import { isFunction, isNumber, isString } from '../util/type';
-import { Style, StyleNumValue, StyleUnit } from '../style/define';
+import { Style, StyleBlurValue, StyleNumValue, StyleUnit } from '../style/define';
 import css, { cloneStyle } from '../style/css';
 
 export type JKeyFrame = Partial<JStyle> & {
@@ -15,11 +15,11 @@ export type KeyFrame = {
   style: Partial<Style>;
   time: number;
   easing?: (v: number) => number;
-  transition: { key: keyof Style, diff: number }[]; // 到下帧有变化的key和差值
+  transition: { key: keyof Style, diff: number | { radius: number, angle?: number} }[]; // 到下帧有变化的key和差值
   fixed: (keyof Style)[]; // 固定不变化的key
 };
 
-class Animation extends AbstractAnimation {
+export class CssAnimation extends AbstractAnimation {
   private _keyFrames: KeyFrame[];
   private _keyFramesR: KeyFrame[];
   currentKeyFrames: KeyFrame[];
@@ -38,7 +38,7 @@ class Animation extends AbstractAnimation {
   private initKeyFrames(jKeyFrames: JKeyFrame[]) {
     const { keys, keyFrames, keyFramesR, originStyle } = parseKeyFrames(this.node, jKeyFrames, this.duration, this.easing);
     this._keyFrames = keyFrames;
-    this._keyFramesR = keyFramesR;
+    this._keyFramesR = keyFramesR; console.log(keys, keyFrames, originStyle)
     calTransition(this.node, this._keyFrames, keys);
     calTransition(this.node, this._keyFramesR, keys);
     this.originStyle = originStyle;
@@ -148,7 +148,15 @@ class Animation extends AbstractAnimation {
           || key === 'rotateZ'
         ) {
           const o = Object.assign({}, style[key]) as StyleNumValue;
-          o.v += diff * percent;
+          o.v += (diff as number) * percent;
+          update[key] = o;
+        }
+        else if (key === 'blur') {
+          const o = cloneStyle(style, key).blur as StyleBlurValue;
+          o.v.radius.v += (diff as any).radius * percent;
+          if (o.v.angle) {
+            o.v.angle.v += (diff as any).angle * percent;
+          }
           update[key] = o;
         }
       });
@@ -363,6 +371,24 @@ function calTransition(node: Node, keyFrames: KeyFrame[], keys: (keyof Style)[])
           prev.fixed.push(key);
         }
       }
+      else if (key === 'blur') {
+        if ((p as StyleBlurValue).v.t === (n as StyleBlurValue).v.t) {
+          prev.transition.push({
+            key,
+            diff: {
+              radius: (n as StyleBlurValue).v.radius.v - (p as StyleBlurValue).v.radius.v,
+              angle: ((n as StyleBlurValue).v.angle?.v || 0) - ((p as StyleBlurValue).v.angle?.v || 0),
+            },
+          });
+        }
+        else {
+          next.fixed.push(key);
+          // fixed很特殊首帧渲染需要
+          if (i === 1) {
+            prev.fixed.push(key);
+          }
+        }
+      }
     });
   }
 }
@@ -404,4 +430,4 @@ function binarySearchFrame(i: number, j: number, currentTime: number, keyFrames:
   return i;
 }
 
-export default Animation;
+export default CssAnimation;

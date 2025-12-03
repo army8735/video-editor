@@ -46,5 +46,5 @@ export const DEFAULT_STYLE = {
   borderTopRightRadius: 0,
   borderBottomLeftRadius: 0,
   borderBottomRightRadius: 0,
-  blur: '',
+  blur: 'none',
 };

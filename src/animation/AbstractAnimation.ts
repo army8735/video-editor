@@ -226,9 +226,7 @@ abstract class AbstractAnimation extends Event {
       const delay = this.delay;
       this._currentTime = v;
       const t = old - delay;
-      // docker上无头chrome卡住，不知道为啥
-      // this.time = t % this.duration;
-      this.time = t - this.duration * Math.floor(t / this.duration);
+      this.time = t % this.duration;
       if (v <= delay) {
         this.isBegin = true;
       }

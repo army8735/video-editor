@@ -34,7 +34,7 @@ import { d2r, H } from '../math/geom';
 import CanvasCache from '../refresh/CanvasCache';
 import TextureCache from '../refresh/TextureCache';
 import AbstractAnimation, { Options } from '../animation/AbstractAnimation';
-import Animation, { JKeyFrame } from '../animation/Animation';
+import CssAnimation, { JKeyFrame } from '../animation/CssAnimation';
 import { calComputedBlur, calComputedFill, calComputedStroke } from '../style/compute';
 import { clone } from '../util/type';
 import { color2rgbaStr } from '../style/color';
@@ -1306,7 +1306,7 @@ class Node extends Event {
   animate(keyFrames: JKeyFrame[], options: Options & {
     autoPlay?: boolean;
   }) {
-    const animation = new Animation(this, keyFrames, options);
+    const animation = new CssAnimation(this, keyFrames, options);
     return this.initAnimate(animation, options);
   }
 

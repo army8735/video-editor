@@ -1,12 +1,12 @@
 import frame from './frame';
-import Animation from './Animation';
+import CssAnimation from './CssAnimation';
 import AbstractAnimation from './AbstractAnimation';
 import FrameAnimation from './FrameAnimation';
 import animationEvent from './animationEvent';
 
 export default {
   frame,
-  Animation,
+  CssAnimation,
   AbstractAnimation,
   FrameAnimation,
   animationEvent,

@@ -19,7 +19,7 @@ import radialFrag from '../gl/radial.frag';
 import simpleVert from '../gl/simple.vert';
 import AbstractAnimation from '../animation/AbstractAnimation';
 import AniController from '../animation/AniController';
-import { CAN_PLAY, WAITING, REFRESH, REFRESH_COMPLETE } from '../refresh/refreshEvent';
+import { CAN_PLAY, REFRESH, REFRESH_COMPLETE, WAITING } from '../refresh/refreshEvent';
 import MbVideoEncoder, { EncodeOptions } from '../util/MbVideoEncoder';
 
 class Root extends Container {
@@ -202,6 +202,9 @@ class Root extends Container {
         }
         if (lv & RefreshLevel.OPACITY) {
           node.calOpacity();
+        }
+        if (lv & RefreshLevel.FILTER) {
+          node.calFilter(lv);
         }
       }
     }
