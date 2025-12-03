@@ -166,44 +166,6 @@ export class MbVideoDecoder extends Event {
           });
         }
       }
-      // 单帧合成模式，按时间戳存储Frame
-      else if (type === DecoderEvent.DECODED_FRAME) {
-        // 防止多个同时解码，用计数器统计
-        const o = cache.singleHash[data.time] = cache.singleHash[data.time] || {
-          videoFrame: data.videoFrame,
-          users: [],
-        };
-        if (!o.users.includes(this)) {
-          o.users.push(this);
-        }
-        const gop = cache.gopList[data.index];
-        if (gop) {
-          gop.state = GOPState.DECODED_FRAME;
-          if (data.audioChunks?.length) {
-            const totalFrames = data.audioChunks.reduce((sum: number, item: AudioChunk) => sum + item.numberOfFrames, 0);
-            const audioContext = new OfflineAudioContext(
-              data.audioChunks[0].numberOfChannels,
-              totalFrames,
-              data.sampleRate,
-            );
-            const audioBuffer = audioContext.createBuffer(data.audioChunks[0].channels.length, totalFrames, data.sampleRate);
-            let offset = 0;
-            data.audioChunks.forEach((item: AudioChunk) => {
-              for (let ch = 0; ch < item.channels.length; ch++) {
-                const channelData = audioBuffer.getChannelData(ch);
-                channelData.set(item.channels[ch], offset);
-              }
-              offset += item.numberOfFrames;
-            });
-            gop.audioBuffer = audioBuffer;
-          }
-          gop.users.forEach(item => {
-            if (item.gopIndex === gop.index && item.currentTime === data.time) {
-              item.emit(MbVideoDecoderEvent.CANPLAY, gop);
-            }
-          });
-        }
-      }
       else if (type === DecoderEvent.ERROR) {
         cache.metaList.forEach(item => {
           item.error = true;
@@ -245,21 +207,6 @@ export class MbVideoDecoder extends Event {
           cache.loadList.push(this);
           cache.count++;
           this.emit(MbVideoDecoderEvent.META, cache.meta);
-        }
-        // 单帧合成清除上一帧
-        if (config.singleSample && lastTime >= 0) {
-          const o = cache.singleHash[lastTime];
-          if (o) {
-            const i = o.users.indexOf(this);
-            if (i > -1) {
-              o.users.splice(i, 1);
-            }
-            if (!o.users.length) {
-              // 可能音频没有
-              o.videoFrame?.close();
-              delete cache.singleHash[lastTime];
-            }
-          }
         }
         this.process(time);
       }
@@ -340,10 +287,6 @@ export class MbVideoDecoder extends Event {
         this.releaseGOP(gop);
       }
     }
-    // 服务端单帧合成模式不预解码，只有之前的释放
-    if (config.singleSample) {
-      return;
-    }
     for (let i = gopIndex + 1, len = gopList.length; i < len; i++) {
       const gop = gopList[i];
       if (gop && gop.timestamp < (time + config.decodeNextDuration)) {
@@ -400,10 +343,6 @@ export class MbVideoDecoder extends Event {
     if (time < 0 || !gopList.length || time > duration) {
       return;
     }
-    // 单帧合成模式用时间戳取frame
-    if (config.singleSample) {
-      return cache.singleHash[time]?.videoFrame;
-    }
     let gop: CacheGOP | undefined;
     if (gopList.length === 1) {
       gop = gopList[0];
@@ -453,11 +392,16 @@ export class MbVideoDecoder extends Event {
     if (gop.state === GOPState.ERROR) {
       return;
     }
+    let isNewer = false;
     if (!gop.users.includes(this)) {
+      isNewer = true;
       gop.users.push(this);
     }
     // 线程异步可能别的gop解码完成了，也可能自己解码完成，播放时不停调用
     if (gop.state === GOPState.DECODED) {
+      if (isNewer) {
+        this.emit(MbVideoDecoderEvent.CANPLAY, gop);
+      }
       return;
     }
     // 剩下只有可能NONE或者DECODING状态了，去重记录发起方id
@@ -471,47 +415,23 @@ export class MbVideoDecoder extends Event {
       gop.audioBufferSourceNode.disconnect();
       gop.audioBufferSourceNode = undefined;
     }
-    // 单帧合成模式发当前时间，以及是否需要音频（第一次没有音频需解码gop的音频部分）
-    if (config.singleSample) {
-      const mes = {
-        url: this.url,
-        id,
-        type: DecoderType.DECODE_FRAME,
-        messageId: messageId++,
-        isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
-        index: gop.index,
-        time,
-        mute: config.mute,
-      };
-      if (worker) {
-        worker.postMessage(mes);
-      }
-      else {
-        onMessage({ data: mes } as any).then(res => {
-          this.onMessage && this.onMessage(res);
-        });
-      }
+    gop.audioBuffer = undefined;
+    const mes = {
+      url: this.url,
+      type: DecoderType.DECODE,
+      id: this.id,
+      messageId: messageId++,
+      isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
+      index: gop.index,
+      mute: config.mute,
+    };
+    if (worker) {
+      worker.postMessage(mes);
     }
-    // 普通模式才清除audioBuffer
     else {
-      gop.audioBuffer = undefined;
-      const mes = {
-        url: this.url,
-        type: DecoderType.DECODE,
-        id: this.id,
-        messageId: messageId++,
-        isWorker: !!config.decoderWorker || !!config.decoderWorkerStr,
-        index: gop.index,
-        mute: config.mute,
-      };
-      if (worker) {
-        worker.postMessage(mes);
-      }
-      else {
-        onMessage({ data: mes } as any).then(res => {
-          this.onMessage && this.onMessage(res);
-        });
-      }
+      onMessage({ data: mes } as any).then(res => {
+        this.onMessage && this.onMessage(res);
+      });
     }
   }
 

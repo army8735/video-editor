@@ -153,6 +153,17 @@ class Container extends Node {
       inject.error('Invalid parameter of removeChild()');
     }
   }
+
+  removeAllChildren(cb?: (sync: boolean) => void) {
+    for (let i = this.children.length - 1; i >= 0; i--) {
+      if (i) {
+        this.children[i].remove();
+      }
+      else {
+        this.children[i].remove(cb);
+      }
+    }
+  }
 }
 
 export default Container;

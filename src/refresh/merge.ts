@@ -1105,14 +1105,15 @@ function genMotionBlur(
   const spread = sigma * 2;
   const bboxS = textureTarget.bbox;
   const bboxR = bboxS.slice(0);
-  const sin = Math.sin(radian);
-  const cos = Math.cos(radian);
-  const spreadY = Math.abs(Math.ceil(sin * spread));
-  const spreadX = Math.abs(Math.ceil(cos * spread));
-  bboxR[0] -= spreadX;
-  bboxR[1] -= spreadY;
-  bboxR[2] += spreadX;
-  bboxR[3] += spreadY;
+  // 视频特殊的运动模糊，不超过原本的范围，配合CLAMP_TO_EDGE效果
+  // const sin = Math.sin(radian);
+  // const cos = Math.cos(radian);
+  // const spreadY = Math.abs(Math.ceil(sin * spread));
+  // const spreadX = Math.abs(Math.ceil(cos * spread));
+  // bboxR[0] -= spreadX;
+  // bboxR[1] -= spreadY;
+  // bboxR[2] += spreadX;
+  // bboxR[3] += spreadY;
   // 写到一个扩展好尺寸的tex中方便后续处理
   const x = bboxR[0],
     y = bboxR[1];

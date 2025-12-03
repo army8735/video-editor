@@ -38,7 +38,7 @@ export class CssAnimation extends AbstractAnimation {
   private initKeyFrames(jKeyFrames: JKeyFrame[]) {
     const { keys, keyFrames, keyFramesR, originStyle } = parseKeyFrames(this.node, jKeyFrames, this.duration, this.easing);
     this._keyFrames = keyFrames;
-    this._keyFramesR = keyFramesR; console.log(keys, keyFrames, originStyle)
+    this._keyFramesR = keyFramesR;
     calTransition(this.node, this._keyFrames, keys);
     calTransition(this.node, this._keyFramesR, keys);
     this.originStyle = originStyle;
