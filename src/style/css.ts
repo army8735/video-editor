@@ -2,6 +2,7 @@ import { ComputedRich, JRich, JStyle, Rich, } from '../format';
 import inject from '../util/inject';
 import { isNil, isString } from '../util/type';
 import {
+  BLUR,
   calUnit,
   ComputedGradient,
   ComputedStyle,
@@ -81,7 +82,7 @@ export function normalize(style: Partial<JStyle>) {
       res.lineHeight = n;
     }
   }
-  if (style.fontFamily) {
+  if (style.fontFamily !== undefined) {
     res.fontFamily = {
       v: style.fontFamily
         .trim()
@@ -135,7 +136,7 @@ export function normalize(style: Partial<JStyle>) {
       };
     }
   }
-  if (style.fontStyle) {
+  if (style.fontStyle !== undefined) {
     const fontStyle = style.fontStyle;
     let v = FONT_STYLE.NORMAL;
     if (fontStyle && /italic/i.test(fontStyle)) {
@@ -152,7 +153,7 @@ export function normalize(style: Partial<JStyle>) {
   if (style.paragraphSpacing !== undefined) {
     res.paragraphSpacing = calUnit(style.paragraphSpacing || 0, true);
   }
-  if (style.textAlign) {
+  if (style.textAlign !== undefined) {
     const textAlign = style.textAlign;
     let v = TEXT_ALIGN.LEFT;
     if (textAlign === 'center') {
@@ -166,7 +167,7 @@ export function normalize(style: Partial<JStyle>) {
     }
     res.textAlign = { v, u: StyleUnit.NUMBER };
   }
-  if (style.textVerticalAlign) {
+  if (style.textVerticalAlign !== undefined) {
     const textVerticalAlign = style.textVerticalAlign;
     let v = TEXT_VERTICAL_ALIGN.TOP;
     if (textVerticalAlign === 'middle') {
@@ -177,7 +178,7 @@ export function normalize(style: Partial<JStyle>) {
     }
     res.textVerticalAlign = { v, u: StyleUnit.NUMBER };
   }
-  if (style.textDecoration) {
+  if (style.textDecoration !== undefined) {
     const textDecoration = style.textDecoration;
     if (Array.isArray(textDecoration)) {
       res.textDecoration = textDecoration.map(item => {
@@ -195,7 +196,7 @@ export function normalize(style: Partial<JStyle>) {
       res.textDecoration = [];
     }
   }
-  if (style.textShadow) {
+  if (style.textShadow !== undefined) {
     if (reg.shadow.test(style.textShadow)) {
       const v = reg.shadow.exec(style.textShadow);
       if (v) {
@@ -216,10 +217,10 @@ export function normalize(style: Partial<JStyle>) {
       };
     }
   }
-  if (style.color) {
+  if (style.color !== undefined) {
     res.color = { v: color2rgbaInt(style.color), u: StyleUnit.RGBA };
   }
-  if (style.visibility) {
+  if (style.visibility !== undefined) {
     res.visibility = {
       v: /hidden/i.test(style.visibility) ? VISIBILITY.HIDDEN : VISIBILITY.VISIBLE,
       u: StyleUnit.NUMBER,
@@ -228,10 +229,10 @@ export function normalize(style: Partial<JStyle>) {
   if (style.opacity !== undefined) {
     res.opacity = { v: Math.max(0, Math.min(1, style.opacity!)), u: StyleUnit.NUMBER };
   }
-  if (style.backgroundColor) {
+  if (style.backgroundColor !== undefined) {
     res.backgroundColor = { v: color2rgbaInt(style.backgroundColor), u: StyleUnit.RGBA };
   }
-  if (style.fill) {
+  if (style.fill !== undefined) {
     const fill = style.fill;
     if (Array.isArray(fill)) {
       res.fill = fill.map((item: string | number[]) => {
@@ -250,7 +251,7 @@ export function normalize(style: Partial<JStyle>) {
       res.fill = [];
     }
   }
-  if (style.fillEnable) {
+  if (style.fillEnable !== undefined) {
     const fillEnable = style.fillEnable;
     if (Array.isArray(fillEnable)) {
       res.fillEnable = fillEnable.map((item: boolean) => {
@@ -261,7 +262,7 @@ export function normalize(style: Partial<JStyle>) {
       res.fillEnable = res.fill.map(() => ({ v: true, u: StyleUnit.BOOLEAN }));
     }
   }
-  if (style.fillOpacity) {
+  if (style.fillOpacity !== undefined) {
     const fillOpacity = style.fillOpacity;
     if (Array.isArray(fillOpacity)) {
       res.fillOpacity = fillOpacity.map((item: number) => {
@@ -272,7 +273,7 @@ export function normalize(style: Partial<JStyle>) {
       res.fillOpacity = res.fill.map(() => ({ v: 1, u: StyleUnit.NUMBER }));
     }
   }
-  if (style.fillMode) {
+  if (style.fillMode !== undefined) {
     const fillMode = style.fillMode;
     if (Array.isArray(fillMode)) {
       res.fillMode = fillMode.map((item: string) => {
@@ -283,14 +284,14 @@ export function normalize(style: Partial<JStyle>) {
       res.fillMode = res.fill.map(() => ({ v: MIX_BLEND_MODE.NORMAL, u : StyleUnit.NUMBER }));
     }
   }
-  if (style.fillRule) {
+  if (style.fillRule !== undefined) {
     const fillRule = style.fillRule;
     res.fillRule = {
       v: fillRule === 'evenodd' ? FILL_RULE.EVEN_ODD : FILL_RULE.NON_ZERO,
       u: StyleUnit.NUMBER,
     };
   }
-  if (style.stroke) {
+  if (style.stroke !== undefined) {
     const stroke = style.stroke;
     if (Array.isArray(stroke)) {
       res.stroke = stroke.map((item: string | number[]) => {
@@ -334,7 +335,7 @@ export function normalize(style: Partial<JStyle>) {
       res.stroke = [];
     }
   }
-  if (style.strokeEnable) {
+  if (style.strokeEnable !== undefined) {
     const strokeEnable = style.strokeEnable;
     if (Array.isArray(strokeEnable)) {
       res.strokeEnable = strokeEnable.map((item: boolean) => {
@@ -345,7 +346,7 @@ export function normalize(style: Partial<JStyle>) {
       res.strokeEnable = res.stroke.map(() => ({ v: true, u: StyleUnit.BOOLEAN }));
     }
   }
-  if (style.strokeWidth) {
+  if (style.strokeWidth !== undefined) {
     const strokeWidth = style.strokeWidth;
     if (Array.isArray(strokeWidth)) {
       res.strokeWidth = strokeWidth.map((item: number) => {
@@ -356,7 +357,7 @@ export function normalize(style: Partial<JStyle>) {
       res.strokeWidth = res.stroke.map(() => ({ v: 1, u: StyleUnit.NUMBER }));
     }
   }
-  if (style.strokePosition) {
+  if (style.strokePosition !== undefined) {
     const strokePosition = style.strokePosition;
     if (Array.isArray(strokePosition)) {
       res.strokePosition = strokePosition.map((item: string) => {
@@ -374,7 +375,7 @@ export function normalize(style: Partial<JStyle>) {
       res.strokePosition = res.stroke.map(() => ({ v: STROKE_POSITION.CENTER, u: StyleUnit.NUMBER }));
     }
   }
-  if (style.strokeMode) {
+  if (style.strokeMode !== undefined) {
     const strokeMode = style.strokeMode;
     if (Array.isArray(strokeMode)) {
       res.strokeMode = strokeMode.map((item: string) => {
@@ -385,7 +386,7 @@ export function normalize(style: Partial<JStyle>) {
       res.strokeMode = res.stroke.map(() => ({ v: MIX_BLEND_MODE.NORMAL, u: StyleUnit.NUMBER }));
     }
   }
-  if (style.strokeDasharray) {
+  if (style.strokeDasharray !== undefined) {
     const strokeDasharray = style.strokeDasharray;
     if (Array.isArray(strokeDasharray)) {
       res.strokeDasharray = strokeDasharray.map((item: number) => {
@@ -396,7 +397,7 @@ export function normalize(style: Partial<JStyle>) {
       res.strokeDasharray = [];
     }
   }
-  if (style.strokeLinecap) {
+  if (style.strokeLinecap !== undefined) {
     const strokeLinecap = style.strokeLinecap;
     let v = STROKE_LINE_CAP.BUTT;
     if (strokeLinecap === 'round') {
@@ -407,7 +408,7 @@ export function normalize(style: Partial<JStyle>) {
     }
     res.strokeLinecap = { v, u: StyleUnit.NUMBER };
   }
-  if (style.strokeLinejoin) {
+  if (style.strokeLinejoin !== undefined) {
     const strokeLinejoin = style.strokeLinejoin;
     let v = STROKE_LINE_JOIN.MITER;
     if (strokeLinejoin === 'round') {
@@ -432,7 +433,7 @@ export function normalize(style: Partial<JStyle>) {
     compatibleTransform(k, n);
     res[k] = n;
   });
-  if (style.transformOrigin) {
+  if (style.transformOrigin !== undefined) {
     const transformOrigin = style.transformOrigin;
     let o: Array<number | string>;
     if (Array.isArray(transformOrigin)) {
@@ -473,11 +474,80 @@ export function normalize(style: Partial<JStyle>) {
     }
     res.transformOrigin = arr;
   }
-  if (style.mixBlendMode) {
+  if (style.mixBlendMode !== undefined) {
     res.mixBlendMode = { v: getBlendMode(style.mixBlendMode), u: StyleUnit.NUMBER };
   }
-  if (style.objectFit) {
+  if (style.objectFit !== undefined) {
     res.objectFit = { v: getObjectFit(style.objectFit), u: StyleUnit.NUMBER };
+  }
+  if (style.blur !== undefined) {
+    const blur = style.blur;
+    const v = reg.blur.exec(blur);
+    if (v) {
+      const t = v[1].toLowerCase();
+      if (t === 'gauss') {
+        res.blur = {
+          v: { t: BLUR.GAUSSIAN, radius: { v: parseFloat(v[2]) || 0, u: StyleUnit.PX } },
+          u: StyleUnit.BLUR,
+        };
+      }
+      else if (t === 'background') {
+        const match = /saturation\s*\((.+)\)/i.exec(blur);
+        let saturation = 0;
+        if (match) {
+          saturation = parseInt(match[1]) || 0;
+        }
+        res.blur = {
+          v: {
+            t: BLUR.BACKGROUND,
+            radius: { v: parseInt(v[2]) || 0, u: StyleUnit.PX },
+            saturation: { v: saturation, u: StyleUnit.PERCENT },
+          },
+          u: StyleUnit.BLUR,
+        };
+      }
+      else if (t === 'radial') {
+        const match = /center\s*\((.+)\)/i.exec(blur);
+        let center = [{ v: 50, u: StyleUnit.PERCENT }, { v: 50, u: StyleUnit.PERCENT }];
+        if (match) {
+          const m = match[1].match(reg.number);
+          if (m) {
+            center[0] = {
+              v: parseFloat(m[0]),
+              u: StyleUnit.PERCENT,
+            };
+            center[1] = {
+              v: parseFloat(m[1]),
+              u: StyleUnit.PERCENT,
+            };
+          }
+        }
+        res.blur = {
+          v: { t: BLUR.RADIAL, radius: { v: parseFloat(v[2]) || 0, u: StyleUnit.PX }, center },
+          u: StyleUnit.BLUR
+        };
+      }
+      else if (t === 'motion') {
+        const match = /angle\s*\((.+)\)/i.exec(blur);
+        let angle = {
+          v: 0,
+          u: StyleUnit.DEG,
+        };
+        if (match) {
+          angle.v = parseFloat(match[1]);
+        }
+        res.blur = {
+          v: { t: BLUR.MOTION, radius: { v: parseFloat(v[2]) || 0, u: StyleUnit.PX }, angle },
+          u: StyleUnit.BLUR
+        };
+      }
+      else {
+        res.blur = { v: { t: BLUR.NONE }, u: StyleUnit.BLUR };
+      }
+    }
+    else {
+      res.blur = { v: { t: BLUR.NONE }, u: StyleUnit.BLUR };
+    }
   }
   return res;
 }
@@ -718,6 +788,29 @@ export function getCssObjectFit(v: OBJECT_FIT) {
   return ['fill', 'contain', 'cover'][v];
 }
 
+export function getCssBlur(t: BLUR, radius: number, angle?: number, center?: [number, number], saturation?: number) {
+  if (t === BLUR.NONE) {
+    return 'none';
+  }
+  let s = ['none', 'gauss', 'motion', 'radial', 'background'][t] + `(${radius})`;
+  if (t === BLUR.MOTION) {
+    s += ` angle(${angle || 0})`;
+  }
+  else if (t === BLUR.RADIAL) {
+    const p = (center || []).map(item => {
+      return item * 100 + '%';
+    });
+    while (p.length < 2) {
+      p.push('50%');
+    }
+    s += ` center(${p.join(', ')})`;
+  }
+  else if (t === BLUR.BACKGROUND) {
+    s += ` saturation(${(saturation === undefined ? 1 : saturation) * 100}%)`;
+  }
+  return s;
+}
+
 export function getCssFillStroke(item: number[] | ComputedGradient, width?: number, height?: number, standard = false) {
   if (Array.isArray(item)) {
     return color2rgbaStr(item);
@@ -738,4 +831,5 @@ export default {
   getCssMbm,
   getCssFillStroke,
   getCssStrokePosition,
+  getCssBlur,
 };

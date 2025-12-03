@@ -210,6 +210,7 @@ export type Style = {
   borderTopRightRadius: StyleNumValue;
   borderBottomLeftRadius: StyleNumValue;
   borderBottomRightRadius: StyleNumValue;
+  blur: StyleBlurValue;
 };
 
 export type ComputedStyle = {
@@ -260,6 +261,7 @@ export type ComputedStyle = {
   borderTopRightRadius: number;
   borderBottomLeftRadius: number;
   borderBottomRightRadius: number;
+  blur: ComputedBlur;
 };
 
 export enum TEXT_ALIGN {
@@ -379,6 +381,35 @@ export type StyleOverflowValue = {
   v: OVERFLOW;
   u: number;
 }
+
+export enum BLUR {
+  NONE = 0,
+  GAUSSIAN = 1,
+  MOTION = 2,
+  RADIAL = 3,
+  BACKGROUND = 4,
+}
+
+export type Blur = {
+  t: BLUR;
+  radius: StyleNumValue;
+  center?: [StyleNumValue, StyleNumValue];
+  saturation?: StyleNumValue;
+  angle?: StyleNumValue;
+};
+
+export type ComputedBlur = {
+  t: BLUR;
+  radius: number;
+  center?: [number, number];
+  saturation?: number;
+  angle?: number;
+};
+
+export type StyleBlurValue = {
+  v: Blur;
+  u: StyleUnit.BLUR;
+};
 
 export function calUnit(v: string | number, degOrNumber2Px = false): StyleNumValue {
   if (v === 'auto') {

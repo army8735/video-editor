@@ -11,6 +11,12 @@ import { checkReflow } from '../refresh/reflow';
 import { initShaders } from '../gl/webgl';
 import mainVert from '../gl/main.vert';
 import mainFrag from '../gl/main.frag';
+import boxFrag from '../gl/box.frag';
+import dualDownFrag from '../gl/dualDown.frag';
+import dualUpFrag from '../gl/dualUp.frag';
+import motionFrag from '../gl/motion.frag';
+import radialFrag from '../gl/radial.frag';
+import simpleVert from '../gl/simple.vert';
 import AbstractAnimation from '../animation/AbstractAnimation';
 import AniController from '../animation/AniController';
 import { CAN_PLAY, WAITING, REFRESH, REFRESH_COMPLETE } from '../refresh/refreshEvent';
@@ -290,6 +296,11 @@ class Root extends Container {
 
   private initShaders(gl: WebGL2RenderingContext | WebGLRenderingContext) {
     const program = (this.programs.program = initShaders(gl, mainVert, mainFrag));
+    this.programs.boxProgram = initShaders(gl, simpleVert, boxFrag);
+    this.programs.dualDownProgram = initShaders(gl, simpleVert, dualDownFrag);
+    this.programs.dualUpProgram = initShaders(gl, simpleVert, dualUpFrag);
+    this.programs.motionProgram = initShaders(gl, simpleVert, motionFrag);
+    this.programs.radialProgram = initShaders(gl, simpleVert, radialFrag);
     gl.useProgram(program);
   }
 

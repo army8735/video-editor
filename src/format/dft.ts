@@ -33,7 +33,7 @@ export const DEFAULT_STYLE = {
   strokeDasharray: [],
   strokeLinecap: 'butt',
   strokeLinejoin: 'miter',
-  strokeMiterlimit: 0,
+  strokeMiterlimit: 4,
   translateX: 0,
   translateY: 0,
   scaleX: 1,
@@ -46,4 +46,5 @@ export const DEFAULT_STYLE = {
   borderTopRightRadius: 0,
   borderBottomLeftRadius: 0,
   borderBottomRightRadius: 0,
+  blur: '',
 };

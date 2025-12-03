@@ -40,7 +40,19 @@ export function calComputedStroke(stroke: Style['stroke']) {
   });
 }
 
+export function calComputedBlur(blur: Style['blur']) {
+  const v = blur.v;
+  return {
+    t: v.t,
+    radius: v.radius?.v || 0,
+    center: v.center ? (v.center.map(item => item.v * 0.01) as [number, number]) : ([0.5, 0.5] as [number, number]),
+    saturation: (v.saturation?.v ?? 100) * 0.01,
+    angle: v.angle ? v.angle.v : 0,
+  };
+}
+
 export default {
   calComputedFill,
   calComputedStroke,
+  calComputedBlur,
 };

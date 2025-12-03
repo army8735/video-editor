@@ -6,6 +6,7 @@ import {
   calNormalLineHeight,
   calSize,
   equalStyle,
+  getCssBlur,
   getCssFillStroke,
   getCssMbm,
   getCssObjectFit,
@@ -34,7 +35,7 @@ import CanvasCache from '../refresh/CanvasCache';
 import TextureCache from '../refresh/TextureCache';
 import AbstractAnimation, { Options } from '../animation/AbstractAnimation';
 import Animation, { JKeyFrame } from '../animation/Animation';
-import { calComputedFill, calComputedStroke } from '../style/compute';
+import { calComputedBlur, calComputedFill, calComputedStroke } from '../style/compute';
 import { clone } from '../util/type';
 import { color2rgbaStr } from '../style/color';
 import inject from '../util/inject';
@@ -72,6 +73,9 @@ class Node extends Event {
   textureTotal?: TextureCache; // 局部子树缓存
   textureFilter?: TextureCache; // 有filter时的缓存
   textureTarget?: TextureCache; // 指向自身所有缓存中最优先的那个
+  tempOpacity: number; // 局部根节点merge汇总临时用到的2个
+  tempMatrix: Float64Array;
+  tempBbox?: Float64Array; // 这个比较特殊，在可视范围外的merge没有变化会一直保存，防止重复计算
   _rect?: Float64Array; // 真实内容组成的内容框，group/geom特殊计算
   _bbox?: Float64Array; // 以rect为基础，包含边框包围盒
   _filterBbox?: Float64Array; // 包含filter/阴影内内容外的包围盒
@@ -111,6 +115,9 @@ class Node extends Event {
     this.hasContent = false;
     this.animationList = [];
     this.contentLoadingNum = 0;
+    // merge过程中相对于merge顶点作为局部根节点时暂存的数据
+    this.tempOpacity = 1;
+    this.tempMatrix = identity();
   }
 
   didMount() {
@@ -224,7 +231,7 @@ class Node extends Event {
       else {
         computedStyle.height = 0;
       }
-      computedStyle.bottom = data.w - computedStyle.top - computedStyle.height;
+      computedStyle.bottom = data.h - computedStyle.top - computedStyle.height;
     }
     else if (fixedBottom) {
       if (height.u !== StyleUnit.AUTO) {
@@ -233,7 +240,7 @@ class Node extends Event {
       else {
         computedStyle.height = 0;
       }
-      computedStyle.top = data.w - computedStyle.bottom - computedStyle.height;
+      computedStyle.top = data.h - computedStyle.bottom - computedStyle.height;
     }
     else {
       if (height.u !== StyleUnit.AUTO) {
@@ -243,7 +250,7 @@ class Node extends Event {
         computedStyle.height = 0;
       }
       computedStyle.top = 0;
-      computedStyle.bottom = data.w - computedStyle.height;
+      computedStyle.bottom = data.h - computedStyle.height;
     }
   }
 
@@ -335,10 +342,27 @@ class Node extends Event {
     if (lv & RefreshLevel.REFLOW_OPACITY) {
       this.calOpacity();
     }
+    if (lv & RefreshLevel.REFLOW_FILTER) {
+      this.calFilter(lv);
+    }
     this._bbox = undefined;
     this._bboxInt = undefined;
     this._filterBbox = undefined;
     this._filterBboxInt = undefined;
+    this.tempBbox = undefined;
+  }
+
+  calFilter(lv: RefreshLevel) {
+    const { style, computedStyle } = this;
+    computedStyle.blur = calComputedBlur(style.blur);
+    // repaint已经做了
+    if (lv < RefreshLevel.REPAINT) {
+      this._filterBbox = undefined;
+      this._filterBboxInt = undefined;
+      this.tempBbox = undefined;
+      this.textureFilter?.release();
+      this.resetTextureTarget();
+    }
   }
 
   calMatrix(lv: RefreshLevel) {
@@ -692,6 +716,8 @@ class Node extends Event {
       }
       return item;
     });
+    const blur = calComputedBlur(style.blur);
+    res.blur = getCssBlur(blur.t, blur.radius, blur.angle, blur.center, blur.saturation);
     return res as JStyle;
   }
 
@@ -1240,6 +1266,7 @@ class Node extends Event {
     this._bboxInt = undefined;
     this._filterBbox = undefined;
     this._filterBboxInt = undefined;
+    this.tempBbox = undefined;
   }
 
   // 节点位置尺寸发生变更后，会递归向上影响，逐步检查，可能在某层没有影响提前跳出中断

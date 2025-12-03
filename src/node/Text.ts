@@ -1131,6 +1131,9 @@ class Text extends Node {
 
     for (let i = 0, len = list.length; i < len; i++) {
       const { x, y, os: { ctx } } = list[i];
+      // 强制1
+      ctx.miterLimit = 1;
+      ctx.fillStyle = 'transparent';
       ctx.setLineDash(strokeDasharray);
       if (strokeLinecap === STROKE_LINE_CAP.ROUND) {
         ctx.lineCap = 'round';

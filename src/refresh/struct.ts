@@ -1,9 +1,9 @@
 import Node from '../node/Node';
 import Root from '../node/Root';
-import { checkInScreen, genMerge, shouldIgnore } from './merge';
+import { checkInScreen, genFrameBufferWithTexture, genMerge, releaseFrameBuffer, shouldIgnore } from './merge';
 import { assignMatrix, multiply } from '../math/matrix';
 import Container from '../node/Container';
-import { drawTextureCache } from '../gl/webgl';
+import { drawTextureCache, texture2Blob } from '../gl/webgl';
 
 export type Struct = {
   node: Node;
@@ -17,7 +17,7 @@ export function renderWebgl(
   root: Root,
 ) {
   const { structs, width: W, height: H } = root;
-  genMerge(gl, root);
+  genMerge(gl, root, 0, 0, W, H);
   const cx = W * 0.5;
   const cy = H * 0.5;
   const programs = root.programs;
@@ -59,7 +59,7 @@ export function renderWebgl(
         target = node.textureTarget;
       }
     }
-    // console.log(i, node.name, node.hasContent, target?.available, matrix.join(','))
+    // console.log(i, node.name, node.hasContent, target?.available)
     // 屏幕内有内容渲染
     if (isInScreen && target?.available) {
       const list = target.list;
@@ -72,6 +72,7 @@ export function renderWebgl(
           texture: t,
           tc,
         }], 0, 0, true);
+        texture2Blob(gl, W, H);
       }
     }
     // 有局部子树缓存可以跳过其所有子孙节点

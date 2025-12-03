@@ -346,6 +346,10 @@ class TextureCache {
     });
     return res;
   }
+
+  static getEmptyInstance(gl: WebGL2RenderingContext | WebGLRenderingContext, bbox: Float64Array) {
+    return new TextureCache(gl, bbox);
+  }
 }
 
 export default TextureCache;
