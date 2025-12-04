@@ -555,6 +555,25 @@ export function normalize(style: Partial<JStyle>) {
     else {
       res.blur = { v: { t: BLUR.NONE }, u: StyleUnit.BLUR };
     }
+    ['hueRotate', 'saturate', 'brightness', 'contrast'].forEach(k => {
+      if (style[k as keyof JStyle] === undefined) {
+        return;
+      }
+      const n = calUnit(style[k as keyof JStyle] as string | number);
+      // hue是角度，其它都是百分比
+      if (k === 'hueRotate') {
+        if (n.u !== StyleUnit.DEG) {
+          n.u = StyleUnit.DEG;
+        }
+      }
+      else {
+        if (n.u !== StyleUnit.PERCENT) {
+          n.v *= 100;
+          n.u = StyleUnit.PERCENT;
+        }
+      }
+      res[k] = n;
+    });
   }
   return res;
 }

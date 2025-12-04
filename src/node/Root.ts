@@ -17,6 +17,7 @@ import dualUpFrag from '../gl/dualUp.frag';
 import motionFrag from '../gl/motion.frag';
 import radialFrag from '../gl/radial.frag';
 import simpleVert from '../gl/simple.vert';
+import cmFrag from '../gl/cm.frag';
 import AbstractAnimation from '../animation/AbstractAnimation';
 import AniController from '../animation/AniController';
 import { CAN_PLAY, REFRESH, REFRESH_COMPLETE, WAITING } from '../refresh/refreshEvent';
@@ -304,6 +305,7 @@ class Root extends Container {
     this.programs.dualUpProgram = initShaders(gl, simpleVert, dualUpFrag);
     this.programs.motionProgram = initShaders(gl, simpleVert, motionFrag);
     this.programs.radialProgram = initShaders(gl, simpleVert, radialFrag);
+    this.programs.cmProgram = initShaders(gl, simpleVert, cmFrag);
     gl.useProgram(program);
   }
 

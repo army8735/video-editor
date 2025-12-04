@@ -511,7 +511,7 @@ export function drawMotion(
   const { pointBuffer, a_position, texBuffer, a_texCoords } = preSingle(gl, program);
   // 参数
   const u_kernel = gl.getUniformLocation(program, 'u_kernel');
-  gl.uniform1i(u_kernel, kernel);
+  gl.uniform1f(u_kernel, kernel);
   const sin = Math.sin(radian) * kernel / height;
   const cos = Math.cos(radian) * kernel / width;
   const u_velocity = gl.getUniformLocation(program, 'u_velocity');
@@ -521,6 +521,7 @@ export function drawMotion(
   let tex1 = texture;
   let tex2 = createTexture(gl, 0, undefined, width, height);
   let tex3 = createTexture(gl, 0, undefined, width, height);
+  // 执行2次，三角形滤波，效果会平滑，3次更加平滑
   for (let i = 0; i < 3; i++) {
     // tex1到tex2
     gl.framebufferTexture2D(

@@ -1,6 +1,7 @@
 import Node from '../node/Node';
 import Root from '../node/Root';
-import { checkInScreen, genMerge, shouldIgnore } from './merge';
+import { genMerge, shouldIgnore } from './merge';
+import { checkInScreen } from './check';
 import { assignMatrix, multiply } from '../math/matrix';
 import Container from '../node/Container';
 import { drawTextureCache } from '../gl/webgl';

@@ -47,4 +47,8 @@ export const DEFAULT_STYLE = {
   borderBottomLeftRadius: 0,
   borderBottomRightRadius: 0,
   blur: 'none',
+  hueRotate: 0,
+  saturate: 1,
+  brightness: 1,
+  contrast: 1,
 };

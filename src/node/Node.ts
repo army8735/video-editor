@@ -355,6 +355,10 @@ class Node extends Event {
   calFilter(lv: RefreshLevel) {
     const { style, computedStyle } = this;
     computedStyle.blur = calComputedBlur(style.blur);
+    computedStyle.hueRotate = style.hueRotate.v;
+    computedStyle.saturate = style.saturate.v * 0.01;
+    computedStyle.brightness = style.brightness.v * 0.01;
+    computedStyle.contrast = style.contrast.v * 0.01;
     // repaint已经做了
     if (lv < RefreshLevel.REPAINT) {
       this._filterBbox = undefined;
@@ -718,6 +722,10 @@ class Node extends Event {
     });
     const blur = calComputedBlur(style.blur);
     res.blur = getCssBlur(blur.t, blur.radius, blur.angle, blur.center, blur.saturation);
+    res.hueRotate = style.hueRotate.v;
+    res.saturate = style.saturate.v + '%';
+    res.brightness = style.brightness.v + '%';
+    res.contrast = style.contrast.v + '%';
     return res as JStyle;
   }
 

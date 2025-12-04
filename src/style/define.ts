@@ -211,6 +211,10 @@ export type Style = {
   borderBottomLeftRadius: StyleNumValue;
   borderBottomRightRadius: StyleNumValue;
   blur: StyleBlurValue;
+  hueRotate: StyleNumValue;
+  saturate: StyleNumValue;
+  brightness: StyleNumValue;
+  contrast: StyleNumValue;
 };
 
 export type ComputedStyle = {
@@ -262,6 +266,10 @@ export type ComputedStyle = {
   borderBottomLeftRadius: number;
   borderBottomRightRadius: number;
   blur: ComputedBlur;
+  hueRotate: number;
+  saturate: number;
+  brightness: number;
+  contrast: number;
 };
 
 export enum TEXT_ALIGN {

@@ -193,6 +193,10 @@ export type JStyle = {
   borderBottomLeftRadius: number,
   borderBottomRightRadius: number,
   blur: string,
+  hueRotate: number | string;
+  saturate: number | string;
+  brightness: number | string;
+  contrast: number | string;
 };
 
 export type ResizeStyle = Partial<Pick<JStyle, 'left' | 'right' | 'top' | 'bottom' | 'width' | 'height' | 'scaleX' | 'scaleY'>>;
