@@ -721,34 +721,66 @@ export function getObjectFit(s: string) {
   return v;
 }
 
-export function equalStyle(a: Partial<Style>, b: Partial<Style>, k: string) {
+export function equalStyle(a: Partial<Style>, b: Partial<Style>, k: keyof Style) {
   if (a === b) {
     return true;
   }
-  // @ts-ignore
-  const av = a[k];
-  // @ts-ignore
-  const bv = b[k];
+  let as = a[k];
+  let bs = b[k];
+  if (as === undefined && bs === undefined) {
+    return true;
+  }
+  if (as === undefined || bs === undefined) {
+    return false;
+  }
   if (k === 'transformOrigin') {
     return (
-      av[0].v === bv[0].v &&
-      av[0].u === bv[0].u &&
-      av[1].v === bv[1].v &&
-      av[1].u === bv[1].u
+      (as as Style['transformOrigin'])[0].v === (bs as Style['transformOrigin'])[0].v &&
+      (as as Style['transformOrigin'])[0].u === (bs as Style['transformOrigin'])[0].u &&
+      (as as Style['transformOrigin'])[1].v === (bs as Style['transformOrigin'])[1].v &&
+      (as as Style['transformOrigin'])[1].u === (bs as Style['transformOrigin'])[1].u
     );
   }
   if (k === 'color' || k === 'backgroundColor') {
     return (
-      av.v[0] === bv.v[0] &&
-      av.v[1] === bv.v[1] &&
-      av.v[2] === bv.v[2] &&
-      av.v[3] === bv.v[3]
+      (as as Style['color']).v[0] === (bs as Style['color']).v[0] &&
+      (as as Style['color']).v[1] === (bs as Style['color']).v[1] &&
+      (as as Style['color']).v[2] === (bs as Style['color']).v[2] &&
+      (as as Style['color']).v[3] === (bs as Style['color']).v[3]
     );
   }
   if (k === 'blur') {
-    // TODO
+    const av = (as as Style['blur']).v;
+    const bv = (bs as Style['blur']).v;
+    if (av.t !== bv.t) {
+      return false;
+    }
+    const list = ['radius', 'saturation', 'offset', 'angle'] as const;
+    for (let i = 0, len = list.length; i < len; i++) {
+      const k = list[i];
+      const av2 = av[k];
+      const bv2 = bv[k];
+      if (!av2 && !bv2) {}
+      else if (!av2) {
+        if (bv2!.v !== 0) {
+          return false;
+        }
+      }
+      else if (!bv2) {
+        if (av2!.v !== 0) {
+          return false;
+        }
+      }
+      else {
+        if (av2.v !== bv2.v || av2.u !== bv2.u) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
-  return av.v === bv.v && av.u === bv.u;
+  // 剩下的都是都一样的最简单普通样式
+  return (as as any).v === (bs as any).v && (as as any).u === (bs as any).u;
 }
 
 export function cloneStyle(style: Partial<Style>, keys?: string | string[]) {
