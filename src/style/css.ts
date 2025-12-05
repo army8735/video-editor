@@ -3,7 +3,8 @@ import inject from '../util/inject';
 import { isNil, isString } from '../util/type';
 import {
   BLUR,
-  calUnit, ComputedBlur,
+  calUnit,
+  ComputedBlur,
   ComputedGradient,
   ComputedStyle,
   FILL_RULE,

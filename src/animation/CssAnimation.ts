@@ -40,7 +40,7 @@ export class CssAnimation extends AbstractAnimation {
     this._keyFrames = keyFrames;
     this._keyFramesR = keyFramesR;
     calTransition(this.node, this._keyFrames, keys);
-    calTransition(this.node, this._keyFramesR, keys); console.log(keyFrames)
+    calTransition(this.node, this._keyFramesR, keys);
     this.originStyle = originStyle;
   }
 

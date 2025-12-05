@@ -1,4 +1,4 @@
-import { ComputedGradient, ComputedPattern, Gradient, Pattern, Style } from './define';
+import { ComputedGradient, Gradient, Style } from './define';
 
 export function calComputedFill(fill: Style['fill']) {
   return fill.map((item) => {

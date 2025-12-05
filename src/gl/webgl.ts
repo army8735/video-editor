@@ -311,14 +311,8 @@ export function drawTextureCache(
   const u_texture = gl.getUniformLocation(program, 'u_texture');
   gl.uniform1i(u_texture, 0);
   // clip范围
-  const u_x1 = gl.getUniformLocation(program, 'x1');
-  gl.uniform1f(u_x1, x1);
-  const u_y1 = gl.getUniformLocation(program, 'y1');
-  gl.uniform1f(u_y1, y1);
-  const u_x2 = gl.getUniformLocation(program, 'x2');
-  gl.uniform1f(u_x2, x2);
-  const u_y2 = gl.getUniformLocation(program, 'y2');
-  gl.uniform1f(u_y2, y2);
+  const u_clip = gl.getUniformLocation(program, 'u_clip');
+  gl.uniform4f(u_clip, x1, y1, x2, y2);
   // 渲染并销毁
   gl.drawArrays(isSingle ? gl.TRIANGLE_STRIP : gl.TRIANGLES, 0, num2);
   gl.deleteBuffer(pointBuffer);
@@ -510,19 +504,15 @@ export function drawMotion(
   height: number,
 ) {
   const { pointBuffer, a_position, texBuffer, a_texCoords } = preSingle(gl, program);
-  // 参数
+  // 参数，内核长度，根据长度计算的纹理参考坐标范围，偏移范围
   const u_kernel = gl.getUniformLocation(program, 'u_kernel');
   gl.uniform1i(u_kernel, Math.floor(kernel));
   const sin = Math.sin(radian) * kernel / height;
   const cos = Math.cos(radian) * kernel / width;
-  const u_velocity = gl.getUniformLocation(program, 'u_velocity');
-  gl.uniform2f(u_velocity, cos, sin);
   const h = Math.sin(radian) * offset / height;
   const v = Math.cos(radian) * offset / width;
-  const u_offset = gl.getUniformLocation(program, 'u_offset');
-  gl.uniform2f(u_offset, v, h);
-  // console.log(kernel, radian, offset, cos, sin);
-  // console.log(v, h);
+  const u_velocity = gl.getUniformLocation(program, 'u_velocity');
+  gl.uniform4f(u_velocity, cos, sin, v, h);
   const u_texture = gl.getUniformLocation(program, 'u_texture');
   // 类似高斯模糊，但不拆分xy，直接一起固定执行
   let tex1 = texture;
