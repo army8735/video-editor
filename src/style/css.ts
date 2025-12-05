@@ -808,6 +808,27 @@ export function equalStyle(a: Partial<Style>, b: Partial<Style>, k: keyof Style)
     }
     return true;
   }
+  if (
+    k === 'fillEnable' ||
+    k === 'fillRule' ||
+    k === 'fillOpacity' ||
+    k === 'strokeEnable' ||
+    k === 'strokeWidth' ||
+    k === 'strokePosition' ||
+    k === 'strokeDasharray'
+  ) {
+    if (as.length !== bs.length) {
+      return false;
+    }
+    for (let i = 0, len = as.length; i < len; i++) {
+      const ai = as[i],
+        bi = bs[i];
+      if (ai.u !== bi.u || ai.v !== bi.v) {
+        return false;
+      }
+    }
+    return true;
+  }
   if (k === 'blur') {
     const av = (as as Style['blur']).v;
     const bv = (bs as Style['blur']).v;
