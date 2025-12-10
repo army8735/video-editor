@@ -33,12 +33,12 @@ function compatibleTransform(k: string, v: StyleNumValue) {
   if (k === 'scaleX' || k === 'scaleY') {
     v.u = StyleUnit.NUMBER;
   }
-  else if (k === 'translateX' || k === 'translateY') {
+  else if (k === 'translateX' || k === 'translateY' || k === 'translateZ' || k === 'perspective') {
     if (v.u === StyleUnit.NUMBER) {
       v.u = StyleUnit.PX;
     }
   }
-  else if (k === 'rotateZ') {
+  else if (k === 'rotateX' || k === 'rotateY' || k === 'rotateZ') {
     if (v.u === StyleUnit.NUMBER) {
       v.u = StyleUnit.DEG;
     }
@@ -423,8 +423,8 @@ export function normalize(style: Partial<JStyle>) {
   if (style.strokeMiterlimit !== undefined) {
     res.strokeMiterlimit = { v: style.strokeMiterlimit, u: StyleUnit.NUMBER };
   }
-  (['translateX', 'translateY', 'skewX', 'skewY', 'scaleX', 'scaleY', 'rotateX', 'rotateY', 'rotateZ', 'perspective'] as const).forEach((k) => {
-    let v = style[k];
+  (['translateX', 'translateY', 'translateZ', 'skewX', 'skewY', 'scaleX', 'scaleY', 'rotateX', 'rotateY', 'rotateZ', 'perspective'] as const).forEach((k) => {
+    const v = style[k];
     if (v === undefined) {
       return;
     }
@@ -433,14 +433,17 @@ export function normalize(style: Partial<JStyle>) {
     compatibleTransform(k, n);
     res[k] = n;
   });
-  if (style.transformOrigin !== undefined) {
-    const transformOrigin = style.transformOrigin;
+  (['transformOrigin', 'perspectiveOrigin'] as const).forEach(k => {
+    const v = style[k];
+    if (v === undefined) {
+      return;
+    }
     let o: Array<number | string>;
-    if (Array.isArray(transformOrigin)) {
-      o = transformOrigin;
+    if (Array.isArray(v)) {
+      o = v;
     }
     else {
-      o = (transformOrigin || '').toString().match(reg.position) as Array<string>;
+      o = (v || '').toString().match(reg.position) as Array<string>;
     }
     if (!o || !o.length) {
       o = [50, 50];
@@ -472,8 +475,8 @@ export function normalize(style: Partial<JStyle>) {
         }
       }
     }
-    res.transformOrigin = arr;
-  }
+    res[k] = arr;
+  });
   if (style.mixBlendMode !== undefined) {
     res.mixBlendMode = { v: getBlendMode(style.mixBlendMode), u: StyleUnit.NUMBER };
   }

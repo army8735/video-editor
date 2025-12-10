@@ -165,6 +165,7 @@ export type JStyle = {
   strokeMiterlimit: number;
   translateX: string | number;
   translateY: string | number;
+  translateZ: string | number;
   skewX: number;
   skewY: number;
   scaleX: number;

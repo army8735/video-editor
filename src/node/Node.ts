@@ -22,14 +22,18 @@ import {
   identity,
   isE,
   multiply,
+  multiplyRotateX,
+  multiplyRotateY,
   multiplyRotateZ,
   multiplyScaleX,
   multiplyScaleY,
+  multiplySkewX,
+  multiplySkewY,
   toE,
 } from '../math/matrix';
 import Container from './Container';
 import { LayoutData } from '../refresh/layout';
-import { calMatrixByOrigin, calRotateZ } from '../style/transform';
+import { calMatrixByOrigin, calPerspectiveMatrix, calRotateX, calRotateY, calRotateZ } from '../style/transform';
 import { d2r, H } from '../math/geom';
 import CanvasCache from '../refresh/CanvasCache';
 import TextureCache from '../refresh/TextureCache';
@@ -64,8 +68,8 @@ class Node extends Event {
   parentOpId: number;
   transform: Float32Array; // 不包含transformOrigin
   matrix: Float32Array; // 包含transformOrigin
-  pptMatrix: Float32Array; // 包含perspective
   _matrixWorld: Float32Array; // 世界transform
+  perspectiveMatrix: Float32Array; // 包含perspective
   hasCacheMw: boolean; // 是否计算过世界matrix
   localMwId: number; // 当前计算后的世界matrix的id，每次改变自增
   parentMwId: number; // 父级的id副本，用以对比确认父级是否变动过
@@ -111,8 +115,8 @@ class Node extends Event {
     this.parentOpId = 0;
     this.transform = identity();
     this.matrix = identity();
-    this.pptMatrix = identity();
     this._matrixWorld = identity();
+    this.perspectiveMatrix = identity();
     this.hasCacheMw = false;
     this.localMwId = 0;
     this.parentMwId = 0;
@@ -343,6 +347,9 @@ class Node extends Event {
     if (lv & RefreshLevel.REFLOW_TRANSFORM) {
       this.calMatrix(lv);
     }
+    if (lv & RefreshLevel.REFLOW_PERSPECTIVE) {
+      this.calPerspective();
+    }
     // 同matrix
     if (lv & RefreshLevel.REFLOW_OPACITY) {
       this.calOpacity();
@@ -385,12 +392,14 @@ class Node extends Event {
     if (
       lv >= RefreshLevel.REFLOW ||
       lv & RefreshLevel.TRANSFORM ||
-      (lv & RefreshLevel.SCALE_X && !computedStyle.scaleX) ||
-      (lv & RefreshLevel.SCALE_Y && !computedStyle.scaleY)
+      (lv & RefreshLevel.SCALE_X && !computedStyle.scaleX) || // 优化计算scale不能为0，无法计算倍数差
+      (lv & RefreshLevel.SCALE_Y && !computedStyle.scaleY) ||
+      (lv & RefreshLevel.ROTATE_Z && (computedStyle.rotateX || computedStyle.rotateY || computedStyle.skewX || computedStyle.skewY)) ||
+      (lv & RefreshLevel.ROTATE_X) || // 暂时忽略这2种旋转，应该和z一样考虑优化
+      (lv & RefreshLevel.ROTATE_Y)
     ) {
       optimize = false;
     }
-    // 优化计算scale不能为0，无法计算倍数差
     if (optimize) {
       if (lv & RefreshLevel.TRANSLATE_X) {
         const v = calSize(style.translateX, this.computedStyle.width);
@@ -450,6 +459,13 @@ class Node extends Event {
         matrix[13] = transform[13] + oy - transform[1] * ox - transform[5] * oy;
         matrix[14] = transform[14] - transform[2] * ox - transform[6] * oy;
       }
+      if (lv & RefreshLevel.TRANSFORM_ORIGIN) {
+        const tfo = style.transformOrigin.map((item, i) => {
+          return calSize(item, i ? this.computedStyle.height : this.computedStyle.width);
+        });
+        const t = calMatrixByOrigin(transform, tfo[0], tfo[1]);
+        assignMatrix(matrix, t);
+      }
     }
     else {
       toE(transform);
@@ -462,17 +478,61 @@ class Node extends Event {
       transform[12] = computedStyle.left + computedStyle.translateX;
       computedStyle.translateY = calSize(style.translateY, this.computedStyle.height);
       transform[13] = computedStyle.top + computedStyle.translateY;
+      computedStyle.translateZ = calSize(style.translateZ, this.computedStyle.width);
+      transform[14] = computedStyle.translateZ;
+      const rotateX = style.rotateX ? style.rotateX.v : 0;
+      const rotateY = style.rotateY ? style.rotateY.v : 0;
       const rotateZ = style.rotateZ ? style.rotateZ.v : 0;
+      const skewX = style.skewX ? style.skewX.v : 0;
+      const skewY = style.skewY ? style.skewY.v : 0;
       const scaleX = style.scaleX ? style.scaleX.v : 1;
       const scaleY = style.scaleY ? style.scaleY.v : 1;
+      computedStyle.rotateX = rotateX;
+      computedStyle.rotateY = rotateY;
       computedStyle.rotateZ = rotateZ;
+      computedStyle.skewX = skewX;
+      computedStyle.skewY = skewY;
       computedStyle.scaleX = scaleX;
       computedStyle.scaleY = scaleY;
-      if (isE(transform) && rotateZ) {
-        calRotateZ(transform, rotateZ);
+      if (rotateX) {
+        if(isE(transform)) {
+          calRotateX(transform, rotateX);
+        }
+        else {
+          multiplyRotateX(transform, d2r(rotateX));
+        }
       }
-      else if (rotateZ) {
-        multiplyRotateZ(transform, d2r(rotateZ));
+      if (rotateY) {
+        if(isE(transform)) {
+          calRotateY(transform, rotateY);
+        }
+        else {
+          multiplyRotateY(transform, d2r(rotateY));
+        }
+      }
+      if (rotateZ) {
+        if(isE(transform)) {
+          calRotateZ(transform, rotateZ);
+        }
+        else {
+          multiplyRotateZ(transform, d2r(rotateZ));
+        }
+      }
+      if (skewX) {
+        if(isE(transform)) {
+          transform[4] = Math.tan(d2r(skewX));
+        }
+        else {
+          multiplySkewX(transform, d2r(skewX));
+        }
+      }
+      if (skewY) {
+        if(isE(transform)) {
+          transform[1] = Math.tan(d2r(skewX));
+        }
+        else {
+          multiplySkewY(transform, d2r(skewX));
+        }
       }
       if (scaleX !== 1) {
         if (isE(transform)) {
@@ -495,7 +555,22 @@ class Node extends Event {
     }
   }
 
-  calPerspective() {}
+  // 和matrix计算很像，但没有特殊优化，同样影响matrixWorld
+  calPerspective() {
+    const { style, computedStyle, perspectiveMatrix } = this;
+    if (this.hasCacheMw || !this.localMwId) {
+      this.hasCacheMw = false;
+      this.localMwId++;
+    }
+    toE(perspectiveMatrix);
+    const pfo = style.perspectiveOrigin.map((item, i) => {
+      return calSize(item, i ? this.computedStyle.height : this.computedStyle.width);
+    });
+    computedStyle.perspectiveOrigin = pfo as [number, number];
+    computedStyle.perspective = calSize(style.perspective, this.computedStyle.width);
+    const t = calPerspectiveMatrix(computedStyle.perspective, pfo[0], pfo[1]);
+    assignMatrix(perspectiveMatrix, t);
+  }
 
   calOpacity() {
     const { style, computedStyle } = this;
@@ -1399,7 +1474,7 @@ class Node extends Event {
       this.hasCacheMw = true;
       // 仅自身变化，或者有父级变化但父级前面已经算好了，防止自己是Root
       parent = this.parent;
-      if (parent) {
+      if (parent && node !== root) {
         const t = multiply(parent._matrixWorld, this.matrix);
         assignMatrix(m, t);
         this.parentMwId = parent.localMwId; // 更新以便后续对比

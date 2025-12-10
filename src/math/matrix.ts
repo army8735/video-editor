@@ -346,6 +346,91 @@ export function multiplyTranslate(m: Float32Array, x: number, y: number) {
   return m;
 }
 
+export function multiplyTranslateZ(m: Float32Array, v: number) {
+  if (!v) {
+    return m;
+  }
+  m[12] += m[8] * v;
+  m[13] += m[9] * v;
+  m[14] += m[10] * v;
+  m[15] += m[11] * v;
+  return m;
+}
+
+export function multiplySkewX(m: Float32Array, v: number) {
+  if(!v) {
+    return m;
+  }
+  let tan = Math.tan(v);
+  m[4] += m[0] * tan;
+  m[5] += m[1] * tan;
+  m[6] += m[2] * tan;
+  m[7] += m[3] * tan;
+  return m;
+}
+
+export function multiplySkewY(m: Float32Array, v: number) {
+  if(!v) {
+    return m;
+  }
+  let tan = Math.tan(v);
+  m[0] += m[4] * tan;
+  m[1] += m[5] * tan;
+  m[2] += m[6] * tan;
+  m[3] += m[7] * tan;
+  return m;
+}
+
+export function multiplyRotateX(m: Float32Array, v: number) {
+  if (!v) {
+    return m;
+  }
+  const sin = Math.sin(v);
+  const cos = Math.cos(v);
+  const e = m[4],
+    f = m[5],
+    g = m[6],
+    h = m[7],
+    i = m[8],
+    k = m[10],
+    l = m[11];
+  m[4] = e * cos + i * sin;
+  m[5] = f * cos + g * sin;
+  m[6] = g * cos + k * sin;
+  m[7] = h * cos + l * sin;
+  m[8] = e * -sin + i * cos;
+  m[9] = f * -sin + g * cos;
+  m[10] = g * -sin + k * cos;
+  m[11] = h * -sin + l * cos;
+  return m;
+}
+
+export function multiplyRotateY(m: Float32Array, v: number) {
+  if (!v) {
+    return m;
+  }
+  const sin = Math.sin(v);
+  const cos = Math.cos(v);
+  const a = m[0],
+    b = m[1],
+    c = m[2],
+    d = m[3],
+    e = m[4],
+    i = m[8],
+    j = m[9],
+    k = m[10],
+    l = m[11];
+  m[0] = a * cos + i * -sin;
+  m[1] = b * cos + j * -sin;
+  m[2] = c * cos + k * -sin;
+  m[3] = d * cos + l * -sin;
+  m[8] = a * sin + i * cos;
+  m[9] = b * sin + j * cos;
+  m[10] = c * sin + k * cos;
+  m[11] = d * sin + l * cos;
+  return m;
+}
+
 export function multiplyRotateZ(m: Float32Array, v: number) {
   if (!v) {
     return m;
@@ -412,7 +497,7 @@ export function calPoint(point: { x: number; y: number, z?: number, w?: number }
   if (m && !isE(m)) {
     const { x, y, z = 0, w = 1 } = point;
     const a1 = m[0], b1 = m[1], c1 = m[2], d1 = m[3];
-    const a2 = m[4], b2 = m[5], c2 = m[6], d2 = m[11];
+    const a2 = m[4], b2 = m[5], c2 = m[6], d2 = m[7];
     const a3 = m[8], b3 = m[9], c3 = m[10], d3 = m[11];
     const a4 = m[12], b4 = m[13], c4 = m[14], d4 = m[15];
     const o = {
@@ -478,9 +563,9 @@ export function calRectPoints(
   yb: number,
   matrix?: Float32Array,
 ) {
-  let { x: x1, y: y1 } = calPoint({ x: xa, y: ya }, matrix);
-  let { x: x3, y: y3 } = calPoint({ x: xb, y: yb }, matrix);
-  let x2, y2, x4, y4;
+  let { x: x1, y: y1, z: z1, w: w1 } = calPoint({ x: xa, y: ya }, matrix);
+  let { x: x3, y: y3, z: z3, w: w3 } = calPoint({ x: xb, y: yb }, matrix);
+  let x2, y2, z2, w2, x4, y4, z4, w4;
   // 无旋转的时候可以少算2个点
   if (
     !matrix ||
@@ -501,11 +586,15 @@ export function calRectPoints(
     let t = calPoint({ x: xb, y: ya }, matrix);
     x2 = t.x;
     y2 = t.y;
+    z2 = t.z;
+    w2 = t.w;
     t = calPoint({ x: xa, y: yb }, matrix);
     x4 = t.x;
     y4 = t.y;
+    z4 = t.z;
+    w4 = t.w;
   }
-  return { x1, y1, x2, y2, x3, y3, x4, y4 };
+  return { x1, y1, z1, w1, x2, y2, z2, w2, x3, y3, z3, w3, x4, y4, z4, w4 };
 }
 
 export default {
@@ -524,7 +613,12 @@ export default {
   multiplyTranslate,
   multiplyTranslateX,
   multiplyTranslateY,
+  multiplyTranslateZ,
+  multiplyRotateX,
+  multiplyRotateY,
   multiplyRotateZ,
+  multiplySkewX,
+  multiplySkewY,
   multiplyScale,
   multiplyScaleX,
   multiplyScaleY

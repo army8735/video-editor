@@ -22,6 +22,8 @@ import AbstractAnimation from '../animation/AbstractAnimation';
 import AniController from '../animation/AniController';
 import { CAN_PLAY, REFRESH, REFRESH_COMPLETE, WAITING } from '../refresh/refreshEvent';
 import MbVideoEncoder, { EncodeOptions } from '../util/MbVideoEncoder';
+import CacheProgram from '../gl/CacheProgram';
+import config from '../config';
 
 class Root extends Container {
   canvas?: HTMLCanvasElement;
@@ -32,7 +34,8 @@ class Root extends Container {
   task: Array<((sync: boolean) => void) | undefined>; // 异步绘制任务回调列表
   aniTask: AbstractAnimation[]; // 动画任务，空占位
   rl: RefreshLevel; // 一帧内画布最大刷新等级记录
-  programs: Record<string, WebGLProgram>;
+  // programs: Record<string, WebGLProgram>;
+  programs: Record<string, CacheProgram>;
   private readonly frameCb: (delta: number) => void; // 帧动画回调
   aniController: AniController;
   audioContext: AudioContext;
@@ -49,7 +52,6 @@ class Root extends Container {
     this.rl = RefreshLevel.NONE;
     this.programs = {};
     this.frameCb = (delta: number) => {
-      // console.log(delta);
       // 优先执行所有动画的差值更新计算，如有更新会调用addUpdate触发task添加，实现本帧绘制
       const aniTaskClone = this.aniTask.slice(0);
       aniTaskClone.forEach(item => {
@@ -104,12 +106,17 @@ class Root extends Container {
       return;
     }
     this.ctx = gl;
-    this.initShaders(gl);
+    config.init(
+      gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS),
+      gl.getParameter(gl.MAX_VARYING_VECTORS),
+    );
+    this.initProgram(gl);
     // 渲染前布局和设置关系结构
     this.reLayout();
     this.didMount();
     this.structs = this.structure(0);
-    this.addUpdate(this, [], RefreshLevel.ADD_DOM);
+    this.asyncDraw();
   }
 
   reLayout() {
@@ -200,6 +207,9 @@ class Root extends Container {
       else {
         if (lv & RefreshLevel.TRANSFORM_ALL) {
           node.calMatrix(lv);
+        }
+        if (lv & RefreshLevel.PERSPECTIVE) {
+          node.calPerspective();
         }
         if (lv & RefreshLevel.OPACITY) {
           node.calOpacity();
@@ -298,15 +308,42 @@ class Root extends Container {
     }
   }
 
-  private initShaders(gl: WebGL2RenderingContext | WebGLRenderingContext) {
-    const program = (this.programs.program = initShaders(gl, mainVert, mainFrag));
-    this.programs.boxProgram = initShaders(gl, simpleVert, boxFrag);
-    this.programs.dualDownProgram = initShaders(gl, simpleVert, dualDownFrag);
-    this.programs.dualUpProgram = initShaders(gl, simpleVert, dualUpFrag);
-    this.programs.motionProgram = initShaders(gl, simpleVert, motionFrag);
-    this.programs.radialProgram = initShaders(gl, simpleVert, radialFrag);
-    this.programs.cmProgram = initShaders(gl, simpleVert, cmFrag);
-    gl.useProgram(program);
+  private initProgram(gl: WebGL2RenderingContext | WebGLRenderingContext) {
+    const isWebgl2 = this.isWebgl2;
+    this.programs.main = new CacheProgram(gl, initShaders(gl, mainVert, mainFrag, this.isWebgl2), isWebgl2 ? {
+      uniform: [
+        'u_texture[0]',
+        'u_texture[1]',
+        'u_texture[2]',
+        'u_texture[3]',
+        'u_texture[4]',
+        'u_texture[5]',
+        'u_texture[6]',
+        'u_texture[7]',
+        'u_texture[8]',
+        'u_texture[9]',
+        'u_texture[10]',
+        'u_texture[11]',
+        'u_texture[12]',
+        'u_texture[13]',
+        'u_texture[14]',
+        'u_texture[15]',
+      ],
+      attrib: ['a_position', 'a_texCoords', 'a_opacity', 'a_clip', 'a_textureIndex'],
+    } : {
+      uniform: ['u_clip', 'u_texture', 'u_opacity'],
+      attrib: ['a_position', 'a_texCoords'],
+    });
+    this.programs.box = new CacheProgram(gl, initShaders(gl, simpleVert, boxFrag), {
+      uniform: ['u_texture', 'u_pw', 'u_ph', 'u_r', 'u_direction'],
+      attrib: ['a_position', 'a_texCoords'],
+    });
+    // this.programs.dualDownProgram = initShaders(gl, simpleVert, dualDownFrag);
+    // this.programs.dualUpProgram = initShaders(gl, simpleVert, dualUpFrag);
+    // this.programs.motionProgram = initShaders(gl, simpleVert, motionFrag);
+    // this.programs.radialProgram = initShaders(gl, simpleVert, radialFrag);
+    // this.programs.cmProgram = initShaders(gl, simpleVert, cmFrag);
+    CacheProgram.useProgram(gl, this.programs.main);
   }
 
   async encode(encodeOptions?: EncodeOptions) {

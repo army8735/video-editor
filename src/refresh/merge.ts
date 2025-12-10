@@ -387,21 +387,21 @@ function genTotal(
               cx,
               cy,
               program,
-              [
+              // [
                 {
                   opacity,
                   matrix,
                   bbox: bbox2,
-                  texture: t2,
+                  t: t2,
                 },
-              ],
-              -rect.x,
-              -rect.y,
-              false,
-              i > index ? x1 : -1, // 子节点可能的裁剪，忽略本身
-              i > index ? y1 : -1,
-              i > index ? x2 : 1,
-              i > index ? y2 : 1,
+              // ],
+              // -rect.x,
+              // -rect.y,
+              // false,
+              // i > index ? x1 : -1, // 子节点可能的裁剪，忽略本身
+              // i > index ? y1 : -1,
+              // i > index ? x2 : 1,
+              // i > index ? y2 : 1,
             );
             // 这里才是真正生成mbm
             if (mixBlendMode !== MIX_BLEND_MODE.NORMAL && tex) {

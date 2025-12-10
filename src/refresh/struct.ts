@@ -2,9 +2,10 @@ import Node from '../node/Node';
 import Root from '../node/Root';
 import { genMerge, shouldIgnore } from './merge';
 import { checkInScreen } from './check';
-import { assignMatrix, multiply } from '../math/matrix';
+import { assignMatrix, isE, multiply } from '../math/matrix';
 import Container from '../node/Container';
-import { drawTextureCache } from '../gl/webgl';
+import { DrawData, drawTextureCache, drawTextureCache2 } from '../gl/webgl';
+import CacheProgram from '../gl/CacheProgram';
 
 export type Struct = {
   node: Node;
@@ -17,13 +18,14 @@ export function renderWebgl(
   gl: WebGL2RenderingContext | WebGLRenderingContext,
   root: Root,
 ) {
-  const { structs, width: W, height: H } = root;
+  const { structs, width: W, height: H, isWebgl2 } = root;
   genMerge(gl, root, 0, 0, W, H);
   const cx = W * 0.5;
   const cy = H * 0.5;
   const programs = root.programs;
-  const program = programs.program;
-  gl.useProgram(program);
+  const main = programs.main;
+  CacheProgram.useProgram(gl, main);
+  const drawCallList: DrawData[] = [];
   for (let i = 0, len = structs.length; i < len; i++) {
     const { node, total } = structs[i];
     // 不可见和透明的跳过
@@ -66,19 +68,36 @@ export function renderWebgl(
       const list = target.list;
       for (let i = 0, len = list.length; i < len; i++) {
         const { bbox, t, tc } = list[i];
-        t && drawTextureCache(gl, cx, cy, program, [{
-          opacity,
-          matrix,
-          bbox,
-          texture: t,
-          tc,
-        }], 0, 0, true);
+        if (t) {
+          if (isWebgl2) {
+            drawCallList.push({
+              opacity,
+              matrix,
+              bbox,
+              t,
+              tc,
+            });
+          }
+          else {
+            drawTextureCache(gl, cx, cy, main, {
+              opacity,
+              matrix,
+              bbox,
+              t,
+              tc,
+            });
+          }
+        }
       }
     }
     // 有局部子树缓存可以跳过其所有子孙节点
     if (target?.available && target !== node.textureCache) {
       i += total;
     }
+  }
+  // 实例化数组减少drawCall
+  if (isWebgl2) {
+    drawTextureCache2(gl as WebGL2RenderingContext, cx, cy, main, drawCallList);
   }
 }
 
@@ -106,10 +125,19 @@ function calWorldMatrixAndOpacity(node: Node, i: number, parent?: Container) {
     node.hasCacheOp = true;
   }
   if (!hasCacheMw) {
+    const ppm = parent ? parent.perspectiveMatrix : undefined;
+    let matrix = node.matrix;
+    // console.log(i, ppm, matrix)
+    if (ppm && !isE(ppm)) {
+      // console.warn(ppm)
+      matrix = multiply(ppm, matrix);
+    }
+    // console.log(matrix);
     assignMatrix(
       node._matrixWorld,
-      parent ? multiply(parent._matrixWorld, node.matrix) : node.matrix,
+      parent ? multiply(parent._matrixWorld, matrix) : matrix,
     );
+    // console.log(node._matrixWorld);
     if (parent) {
       node.parentMwId = parent.localMwId;
     }

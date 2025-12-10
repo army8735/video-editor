@@ -1,13 +1,29 @@
-attribute vec2 a_position;
-varying vec4 v_position;
-attribute vec2 a_texCoords;
-varying vec2 v_texCoords;
-attribute float a_opacity;
-varying float v_opacity;
+#ifdef IS_WEBGL2
+  in vec3 a_position;
+  in vec2 a_texCoords;
+  in float a_opacity;
+  in float a_textureIndex;
+  in vec4 a_clip;
+  out vec4 v_position;
+  out vec2 v_texCoords;
+  out float v_opacity;
+  out float v_textureIndex;
+  out vec4 v_clip;
+#else
+  attribute vec4 a_position;
+  varying vec4 v_position;
+  attribute vec2 a_texCoords;
+  varying vec2 v_texCoords;
+#endif
 
 void main() {
-  gl_Position = vec4(a_position, 0, 1);
+  gl_Position = vec4(a_position.xy, 0, a_position.z);
   v_position = gl_Position;
   v_texCoords = a_texCoords;
-  v_opacity = a_opacity;
+  #ifdef IS_WEBGL2
+    v_opacity = a_opacity;
+    v_textureIndex = a_textureIndex;
+    v_clip = a_clip;
+  #else
+  #endif
 }

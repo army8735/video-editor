@@ -36,6 +36,7 @@ export const DEFAULT_STYLE = {
   strokeMiterlimit: 4,
   translateX: 0,
   translateY: 0,
+  translateZ: 0,
   skewX: 0,
   skewY: 0,
   scaleX: 1,

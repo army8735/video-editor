@@ -11,6 +11,32 @@ import {
 import { Style } from './define';
 import { calSize } from './css';
 
+export function calRotateX(t: Float32Array, v: number) {
+  return calRotateXRadian(t, d2r(v));
+}
+
+export function calRotateXRadian(t: Float32Array, v: number) {
+  const sin = Math.sin(v);
+  const cos = Math.cos(v);
+  t[5] = t[10] = cos;
+  t[6] = sin;
+  t[9] = -sin;
+  return t;
+}
+
+export function calRotateY(t: Float32Array, v: number) {
+  return calRotateYRadian(t, d2r(v));
+}
+
+export function calRotateYRadian(t: Float32Array, v: number) {
+  const sin = Math.sin(v);
+  const cos = Math.cos(v);
+  t[0] = t[10] = cos;
+  t[8] = sin;
+  t[2] = -sin;
+  return t;
+}
+
 export function calRotateZ(t: Float32Array, v: number) {
   return calRotateZRadian(t, d2r(v));
 }
@@ -74,10 +100,26 @@ export function calTransformByMatrixAndOrigin(matrix: Float32Array, x: number, y
   return res;
 }
 
+export function calPerspectiveMatrix(perspective: number, ox: number, oy: number) {
+  let res = identity() as Float32Array;
+  // 最小值限制1
+  if (perspective >= 1) {
+    res[11] = -1 / perspective;
+    if (ox || oy) {
+      res = tfoMultiply(ox, oy, res);
+      res = multiplyTfo(res, -ox, -oy);
+    }
+  }
+  return res;
+}
+
 export default {
+  calRotateX,
+  calRotateXRadian,
   calRotateZ,
   calRotateZRadian,
   calMatrix,
   calMatrixByOrigin,
   calTransformByMatrixAndOrigin,
+  calPerspectiveMatrix,
 };

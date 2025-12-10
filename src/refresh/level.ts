@@ -1,30 +1,35 @@
 // prettier-ignore
 export enum RefreshLevel {
-  NONE =             0b00000000000000000, // 0
-  CACHE =            0b00000000000000001, // 1
-  TRANSLATE_X =      0b00000000000000010, // 2
-  TRANSLATE_Y =      0b00000000000000100, // 4
-  TRANSLATE =        0b00000000000000110, // 6
-  ROTATE_Z =         0b00000000000001000, // 8
-  SCALE_X =          0b00000000000010000, // 16
-  SCALE_Y =          0b00000000000100000, // 32
-  SCALE =            0b00000000000110000, // 48
-  TRANSFORM =        0b00000000001000000, // 64
-  TRANSFORM_ALL =    0b00000000001111110, // 126
-  OPACITY =          0b00000000010000000, // 128
-  FILTER =           0b00000000100000000, // 256
-  MIX_BLEND_MODE =   0b00000001000000000, // 512
-  MASK =             0b00000010000000000, // 1024
-  BREAK_MASK =       0b00000100000000000, // 2048
-  TINT =             0b00001000000000000, // 4096
-  REPAINT =          0b00010000000000000, // 8192
-  REFLOW =           0b00100000000000000, // 16384
-  REFLOW_REPAINT =   0b00110000000000000, // 24576
-  REFLOW_TRANSFORM = 0b00100000011111110, // 16638
-  REFLOW_OPACITY =   0b00100000010000000, // 16512
-  REFLOW_FILTER =    0b00100000100000000, // 16640
-  ADD_DOM =          0b01000000000000000, // 32768
-  REMOVE_DOM =       0b10000000000000000, // 65536
+  NONE =               0b000000000000000000000,
+  CACHE =              0b000000000000000000001,
+  TRANSLATE_X =        0b000000000000000000010,
+  TRANSLATE_Y =        0b000000000000000000100,
+  TRANSLATE =          0b000000000000000000110,
+  TRANSLATE_Z =        0b000000000000000001000,
+  ROTATE_X =           0b000000000000000010000,
+  ROTATE_Y =           0b000000000000000100000,
+  ROTATE_Z =           0b000000000000001000000,
+  SCALE_X =            0b000000000000010000000,
+  SCALE_Y =            0b000000000000100000000,
+  SCALE =              0b000000000000110000000,
+  TRANSFORM =          0b000000000001000000000,
+  TRANSFORM_ORIGIN =   0b000000000010000000000,
+  PERSPECTIVE =        0b000000000100000000000,
+  TRANSFORM_ALL =      0b000000000011111111110,
+  OPACITY =            0b000000001000000000000,
+  FILTER =             0b000000010000000000000,
+  MIX_BLEND_MODE =     0b000000100000000000000,
+  MASK =               0b000001000000000000000,
+  BREAK_MASK =         0b000010000000000000000,
+  REPAINT =            0b000100000000000000000,
+  REFLOW =             0b001000000000000000000,
+  REFLOW_REPAINT =     0b001100000000000000000,
+  REFLOW_TRANSFORM =   0b001000000011111111110,
+  REFLOW_PERSPECTIVE = 0b001000000100000000000,
+  REFLOW_OPACITY =     0b001000001000000000000,
+  REFLOW_FILTER =      0b001000010000000000000,
+  ADD_DOM =            0b010000000000000000000,
+  REMOVE_DOM =         0b100000000000000000000,
 }
 
 export function isReflow(lv: number) {
@@ -70,6 +75,15 @@ export function getLevel(k: string) {
   if (k === 'translateY') {
     return RefreshLevel.TRANSLATE_Y;
   }
+  if (k === 'translateZ') {
+    return RefreshLevel.TRANSLATE_Z;
+  }
+  if (k === 'rotateX') {
+    return RefreshLevel.ROTATE_X;
+  }
+  if (k === 'rotateY') {
+    return RefreshLevel.ROTATE_Y;
+  }
   if (k === 'rotateZ') {
     return RefreshLevel.ROTATE_Z;
   }
@@ -79,11 +93,17 @@ export function getLevel(k: string) {
   if (k === 'scaleY') {
     return RefreshLevel.SCALE_Y;
   }
-  if (k === 'transformOrigin' || k === 'matrix') {
+  if (k === 'matrix') {
     return RefreshLevel.TRANSFORM;
+  }
+  if (k === 'transformOrigin') {
+    return RefreshLevel.TRANSFORM_ORIGIN;
   }
   if (k === 'opacity') {
     return RefreshLevel.OPACITY;
+  }
+  if (k === 'perspective' || k === 'perspectiveOrigin') {
+    return RefreshLevel.PERSPECTIVE;
   }
   if (k === 'blur' ||
     k === 'shadow' ||

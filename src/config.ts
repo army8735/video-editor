@@ -21,7 +21,7 @@ export default {
   get MAX_TEXTURE_SIZE() {
     return MAX_TEXTURE_SIZE;
   },
-  MAX_TEXTURE_UNITS: 8,
+  MAX_TEXTURE_IMAGE_UNITS: 8,
   MAX_VARYING_VECTORS: 15,
   // 初始化root的时候才会调用
   init(maxSize: number, maxUnits: number, maxVectors: number) {
@@ -34,7 +34,7 @@ export default {
     }
     hasInit = true;
     MAX_TEXTURE_SIZE = maxSize;
-    this.MAX_TEXTURE_UNITS = maxUnits;
+    this.MAX_TEXTURE_IMAGE_UNITS = maxUnits;
     this.MAX_VARYING_VECTORS = maxVectors;
   },
   historyTime: 1000, // 添加历史记录时命令之间是否合并的时间差阈值

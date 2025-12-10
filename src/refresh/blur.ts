@@ -8,16 +8,17 @@ import {
   drawDual,
   drawMotion,
   drawRadial,
-  drawTextureCache,
+  drawTextureCache, texture2Blob,
 } from '../gl/webgl';
 import { genFrameBufferWithTexture, releaseFrameBuffer } from './fb';
 import { checkInRect } from './check';
 import { d2r } from '../math/geom';
+import CacheProgram from '../gl/CacheProgram';
 
 // 因为blur原因，原本内容先绘入一个更大尺寸的fbo中
 function drawInSpreadBbox(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
-  program: WebGLProgram,
+  cacheProgram: CacheProgram,
   textureTarget: TextureCache,
   temp: TextureCache,
   x: number, y: number,
@@ -66,29 +67,21 @@ function drawInSpreadBbox(
         cy = height * 0.5;
       for (let i = 0, len = listS.length; i < len; i++) {
         const { bbox: bbox2, t: t2 } = listS[i];
-        if (t2 && checkInRect(bbox2, undefined, x0, y0, w0, h0)) {
+        if (t2 && checkInRect(bbox2, undefined, x0, y0, w0, h0)) { console.log(i)
           drawTextureCache(
             gl,
             cx,
             cy,
-            program,
-            [
-              {
-                opacity: 1,
-                bbox: new Float32Array([
-                  bbox2[0],
-                  bbox2[1],
-                  bbox2[2],
-                  bbox2[3],
-                ]),
-                texture: t2,
-              },
-            ],
-            -x0,
-            -y0,
-            false,
-            -1, -1, 1, 1,
+            cacheProgram,
+            {
+              opacity: 1,
+              bbox: bbox2,
+              t: t2,
+              dx: -x0,
+              dy: -y0,
+            },
           );
+          texture2Blob(gl, w0, h0);
         }
       }
     }
@@ -184,7 +177,7 @@ function createInOverlay(
 // 将交界处单独生成的模糊覆盖掉原本区块模糊的边界
 function drawInOverlay(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
-  program: WebGLProgram,
+  cacheProgram: CacheProgram,
   res: TextureCache,
   listO: {
     bbox: Float32Array,
@@ -195,7 +188,7 @@ function drawInOverlay(
   bboxR: Float32Array,
   spread: number,
 ) {
-  gl.useProgram(program);
+  CacheProgram.useProgram(gl, cacheProgram);
   gl.blendFunc(gl.ONE, gl.ZERO);
   const listR = res.list;
   for (let i = 0, len = listR.length; i < len; i++) {
@@ -234,29 +227,20 @@ function drawInOverlay(
           gl,
           cx,
           cy,
-          program,
-          [
-            {
-              opacity: 1,
-              bbox: new Float32Array([
-                bbox3[0],
-                bbox3[1],
-                bbox3[2],
-                bbox3[3],
-              ]),
-              texture: t2,
-              tc: {
-                x1: (bbox3[0] === bboxR[0] ? 0 : spread) / w2,
-                y1: (bbox3[1] === bboxR[1] ? 0 : spread) / h2,
-                x3: (bbox3[2] === bboxR[2] ? w2 : (w2 - spread)) / w2,
-                y3: (bbox3[3] === bboxR[3] ? h2 : (h2 - spread)) / h2,
-              },
+          cacheProgram,
+          {
+            opacity: 1,
+            bbox: bbox3,
+            t: t2,
+            tc: {
+              x1: (bbox3[0] === bboxR[0] ? 0 : spread) / w2,
+              y1: (bbox3[1] === bboxR[1] ? 0 : spread) / h2,
+              x3: (bbox3[2] === bboxR[2] ? w2 : (w2 - spread)) / w2,
+              y3: (bbox3[3] === bboxR[3] ? h2 : (h2 - spread)) / h2,
             },
-          ],
-          -bbox[0],
-          -bbox[1],
-          false,
-          -1, -1, 1, 1,
+            dx: -bbox[0],
+            dy: -bbox[1],
+          },
         );
       }
     }
@@ -294,12 +278,13 @@ export function genGaussBlur(
   const w = bboxR[2] - bboxR[0],
     h = bboxR[3] - bboxR[1];
   const programs = root.programs;
-  const program = programs.program;
+  const main = programs.main;
   const temp = TextureCache.getEmptyInstance(gl, bboxR);
   temp.available = true;
   const listT = temp.list;
   // 由于存在扩展，原本的位置全部偏移，需要重算
-  const frameBuffer = drawInSpreadBbox(gl, program, textureTarget, temp, x, y, w, h);
+  const frameBuffer = drawInSpreadBbox(gl, main, textureTarget, temp, x, y, w, h);
+  // texture2Blob(gl, w, h);
   const dualTimes = getDualTimesFromSigma(sigma);
   const boxes = boxesForGauss(sigma * Math.pow(0.5, dualTimes));
   // 生成模糊，先不考虑多块情况下的边界问题，各个块的边界各自为政
@@ -323,7 +308,7 @@ export function genGaussBlur(
     for (let i = 0, len = listO.length; i < len; i++) {
       const item = listO[i];
       const { bbox, w, h, t } = item;
-      gl.useProgram(program);
+      CacheProgram.useProgram(gl, main);
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER,
         gl.COLOR_ATTACHMENT0,
@@ -345,23 +330,19 @@ export function genGaussBlur(
             gl,
             cx,
             cy,
-            program,
-            [
-              {
-                opacity: 1,
-                bbox: new Float32Array([
-                  bbox2[0],
-                  bbox2[1],
-                  bbox2[2],
-                  bbox2[3],
-                ]),
-                texture: t2,
-              },
-            ],
-            -bbox[0],
-            -bbox[1],
-            false,
-            -1, -1, 1, 1,
+            main,
+            {
+              opacity: 1,
+              bbox: new Float32Array([
+                bbox2[0],
+                bbox2[1],
+                bbox2[2],
+                bbox2[3],
+              ]),
+              t: t2,
+              dx: -bbox[0],
+              dy: -bbox[1],
+            },
           );
           hasDraw = true;
         }
@@ -373,11 +354,11 @@ export function genGaussBlur(
       }
     }
     // 所有相邻部分回填
-    drawInOverlay(gl, program, res, listO, bboxR, spread);
+    drawInOverlay(gl, main, res, listO, bboxR, spread);
   }
   // 删除fbo恢复
   temp.release();
-  gl.useProgram(program);
+  CacheProgram.useProgram(gl, main);
   releaseFrameBuffer(gl, frameBuffer!, W, H);
   return res;
 }
@@ -415,21 +396,22 @@ function genScaleGaussBlur(
   h: number,
 ) {
   const programs = root.programs;
-  const programBox = programs.boxProgram;
-  const programDualDown = programs.dualDownProgram;
-  const programDualUp = programs.dualUpProgram;
+  const box = programs.box;
+  const dualDown = programs.dualDown;
+  const dualUp = programs.dualUp;
   let w1 = w, h1 = h;
   let t2: WebGLTexture | undefined = undefined;
   // const p1 = performance.now();
   if (dualTimes) {
-    gl.useProgram(programDualDown);
+    // gl.useProgram(programDualDown);
+    CacheProgram.useProgram(gl, dualDown);
     t2 = t;
     for (let i = 1; i <= dualTimes; i++) {
       const w2 = Math.ceil(w * Math.pow(0.5, i));
       const h2 = Math.ceil(h * Math.pow(0.5, i));
       gl.viewport(0, 0, w2, h2);
       const temp = t2;
-      t2 = drawDual(gl, programDualDown, temp, w1, h1, w2, h2);
+      t2 = drawDual(gl, dualDown, temp, w1, h1, w2, h2);
       if (temp !== t) {
         gl.deleteTexture(temp);
       }
@@ -438,19 +420,21 @@ function genScaleGaussBlur(
     }
   }
   // 无论是否缩小都复用box产生模糊
-  gl.useProgram(programBox);
+  // gl.useProgram(programBox);
+  CacheProgram.useProgram(gl, box);
   gl.viewport(0, 0, w1, h1);
-  let tex = drawBox(gl, programBox, t2 || t, w1, h1, boxes);
+  let tex = drawBox(gl, box, t2 || t, w1, h1, boxes);
   // 可能再放大dualTimes次
   if (dualTimes) {
-    gl.useProgram(programDualUp);
+    // gl.useProgram(programDualUp);
+    CacheProgram.useProgram(gl, dualUp);
     t2 = tex;
     for (let i = dualTimes - 1; i >= 0; i--) {
       const w2 = Math.ceil(w * Math.pow(0.5, i));
       const h2 = Math.ceil(h * Math.pow(0.5, i));
       gl.viewport(0, 0, w2, h2);
       const temp = t2;
-      t2 = drawDual(gl, programDualUp, temp, w1, h1, w2, h2);
+      t2 = drawDual(gl, dualUp, temp, w1, h1, w2, h2);
       gl.deleteTexture(temp);
       w1 = w2;
       h1 = h2;
@@ -565,22 +549,18 @@ export function genRadialBlur(
             cx,
             cy,
             program,
-            [
-              {
-                opacity: 1,
-                bbox: new Float32Array([
-                  bbox2[0],
-                  bbox2[1],
-                  bbox2[2],
-                  bbox2[3],
-                ]),
-                texture: t2,
-              },
-            ],
-            -bbox[0],
-            -bbox[1],
-            false,
-            -1, -1, 1, 1,
+            {
+              opacity: 1,
+              bbox: new Float32Array([
+                bbox2[0],
+                bbox2[1],
+                bbox2[2],
+                bbox2[3],
+              ]),
+              t: t2,
+              dx: -bbox[0],
+              dy: -bbox[1],
+            },
           );
           hasDraw = true;
         }
@@ -634,12 +614,12 @@ export function genMotionBlur(
   const w = bboxR[2] - bboxR[0],
     h = bboxR[3] - bboxR[1];
   const programs = root.programs;
-  const program = programs.program;
+  const main = programs.main;
   const temp = TextureCache.getEmptyInstance(gl, bboxR);
   temp.available = true;
   const listT = temp.list;
   // 由于存在扩展，原本的位置全部偏移，需要重算
-  const frameBuffer = drawInSpreadBbox(gl, program, textureTarget, temp, x, y, w, h);
+  const frameBuffer = drawInSpreadBbox(gl, main, textureTarget, temp, x, y, w, h);
   // 迭代运动模糊，先不考虑多块情况下的边界问题，各个块的边界各自为政
   const programMotion = programs.motionProgram;
   gl.useProgram(programMotion);
@@ -664,7 +644,7 @@ export function genMotionBlur(
     for (let i = 0, len = listO.length; i < len; i++) {
       const item = listO[i];
       const { bbox, w, h, t } = item;
-      gl.useProgram(program);
+      CacheProgram.useProgram(gl, main);
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER,
         gl.COLOR_ATTACHMENT0,
@@ -686,23 +666,14 @@ export function genMotionBlur(
             gl,
             cx,
             cy,
-            program,
-            [
-              {
-                opacity: 1,
-                bbox: new Float32Array([
-                  bbox2[0],
-                  bbox2[1],
-                  bbox2[2],
-                  bbox2[3],
-                ]),
-                texture: t2,
-              },
-            ],
-            -bbox[0],
-            -bbox[1],
-            false,
-            -1, -1, 1, 1,
+            main,
+            {
+              opacity: 1,
+              bbox: bbox2,
+              t: t2,
+              dx: -bbox[0],
+              dy: -bbox[1],
+            },
           );
           hasDraw = true;
         }
@@ -713,11 +684,11 @@ export function genMotionBlur(
       }
       gl.deleteTexture(t);
     }
-    drawInOverlay(gl, program, res, listO, bboxR, spread);
+    drawInOverlay(gl, main, res, listO, bboxR, spread);
   }
   // 删除fbo恢复
   temp.release();
-  gl.useProgram(program);
+  CacheProgram.useProgram(gl, main);
   releaseFrameBuffer(gl, frameBuffer, W, H);
   return res;
 }
