@@ -18,6 +18,7 @@ import { genGaussBlur, genMotionBlur, genRadialBlur } from './blur';
 import { genFrameBufferWithTexture, releaseFrameBuffer } from './fb';
 import { checkInRect } from './check';
 import { genColorMatrix } from './cm';
+import CacheProgram from '../gl/CacheProgram';
 
 export type Merge = {
   i: number;
@@ -528,12 +529,12 @@ export function genMbm(
   tex1: WebGLTexture,
   tex2: WebGLTexture,
   mixBlendMode: MIX_BLEND_MODE,
-  programs: Record<string, WebGLProgram>,
+  programs: Record<string, CacheProgram>,
   w: number,
   h: number,
 ) {
   // 获取对应的mbm程序
-  let program: WebGLProgram;
+  let program: CacheProgram;
   if (mixBlendMode === MIX_BLEND_MODE.MULTIPLY) {
     program = programs.multiplyProgram;
   }

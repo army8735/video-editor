@@ -338,9 +338,15 @@ class Root extends Container {
       uniform: ['u_texture', 'u_pw', 'u_ph', 'u_r', 'u_direction'],
       attrib: ['a_position', 'a_texCoords'],
     });
-    // this.programs.dualDownProgram = initShaders(gl, simpleVert, dualDownFrag);
-    // this.programs.dualUpProgram = initShaders(gl, simpleVert, dualUpFrag);
-    // this.programs.motionProgram = initShaders(gl, simpleVert, motionFrag);
+    this.programs.dualDown = new CacheProgram(gl, initShaders(gl, simpleVert, dualDownFrag), {
+      uniform: ['u_x', 'u_y'],
+    });
+    this.programs.dualUp = new CacheProgram(gl, initShaders(gl, simpleVert, dualUpFrag), {
+      uniform: ['u_x', 'u_y'],
+    });
+    this.programs.motion = new CacheProgram(gl, initShaders(gl, simpleVert, motionFrag), {
+      uniform: ['u_kernel', 'u_velocity'],
+    });
     // this.programs.radialProgram = initShaders(gl, simpleVert, radialFrag);
     // this.programs.cmProgram = initShaders(gl, simpleVert, cmFrag);
     CacheProgram.useProgram(gl, this.programs.main);

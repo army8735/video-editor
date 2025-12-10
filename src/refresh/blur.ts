@@ -8,7 +8,9 @@ import {
   drawDual,
   drawMotion,
   drawRadial,
-  drawTextureCache, texture2Blob,
+  drawTextureCache,
+  drawTextureCache2,
+  // texture2Blob,
 } from '../gl/webgl';
 import { genFrameBufferWithTexture, releaseFrameBuffer } from './fb';
 import { checkInRect } from './check';
@@ -18,6 +20,7 @@ import CacheProgram from '../gl/CacheProgram';
 // 因为blur原因，原本内容先绘入一个更大尺寸的fbo中
 function drawInSpreadBbox(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
+  isWebgl2: boolean,
   cacheProgram: CacheProgram,
   textureTarget: TextureCache,
   temp: TextureCache,
@@ -67,21 +70,37 @@ function drawInSpreadBbox(
         cy = height * 0.5;
       for (let i = 0, len = listS.length; i < len; i++) {
         const { bbox: bbox2, t: t2 } = listS[i];
-        if (t2 && checkInRect(bbox2, undefined, x0, y0, w0, h0)) { console.log(i)
-          drawTextureCache(
-            gl,
-            cx,
-            cy,
-            cacheProgram,
-            {
-              opacity: 1,
-              bbox: bbox2,
-              t: t2,
-              dx: -x0,
-              dy: -y0,
-            },
-          );
-          texture2Blob(gl, w0, h0);
+        if (t2 && checkInRect(bbox2, undefined, x0, y0, w0, h0)) {
+          if (isWebgl2) {
+            drawTextureCache2(
+              gl as WebGL2RenderingContext,
+              cx,
+              cy,
+              cacheProgram,
+              [{
+                opacity: 1,
+                bbox: bbox2,
+                t: t2,
+                dx: -x0,
+                dy: -y0,
+              }],
+            );
+          }
+          else {
+            drawTextureCache(
+              gl,
+              cx,
+              cy,
+              cacheProgram,
+              {
+                opacity: 1,
+                bbox: bbox2,
+                t: t2,
+                dx: -x0,
+                dy: -y0,
+              },
+            );
+          }
         }
       }
     }
@@ -177,6 +196,7 @@ function createInOverlay(
 // 将交界处单独生成的模糊覆盖掉原本区块模糊的边界
 function drawInOverlay(
   gl: WebGLRenderingContext | WebGL2RenderingContext,
+  isWebgl2: boolean,
   cacheProgram: CacheProgram,
   res: TextureCache,
   listO: {
@@ -223,25 +243,48 @@ function drawInOverlay(
       const w3 = bbox3[2] - bbox3[0],
         h3 = bbox3[3] - bbox3[1];
       if (checkInRect(bbox, undefined, bbox3[0], bbox3[1], w3, h3)) {
-        drawTextureCache(
-          gl,
-          cx,
-          cy,
-          cacheProgram,
-          {
-            opacity: 1,
-            bbox: bbox3,
-            t: t2,
-            tc: {
-              x1: (bbox3[0] === bboxR[0] ? 0 : spread) / w2,
-              y1: (bbox3[1] === bboxR[1] ? 0 : spread) / h2,
-              x3: (bbox3[2] === bboxR[2] ? w2 : (w2 - spread)) / w2,
-              y3: (bbox3[3] === bboxR[3] ? h2 : (h2 - spread)) / h2,
+        if (isWebgl2) {
+          drawTextureCache2(
+            gl as WebGL2RenderingContext,
+            cx,
+            cy,
+            cacheProgram,
+            [{
+              opacity: 1,
+              bbox: bbox3,
+              t: t2,
+              tc: {
+                x1: (bbox3[0] === bboxR[0] ? 0 : spread) / w2,
+                y1: (bbox3[1] === bboxR[1] ? 0 : spread) / h2,
+                x3: (bbox3[2] === bboxR[2] ? w2 : (w2 - spread)) / w2,
+                y3: (bbox3[3] === bboxR[3] ? h2 : (h2 - spread)) / h2,
+              },
+              dx: -bbox[0],
+              dy: -bbox[1],
+            }],
+          );
+        }
+        else {
+          drawTextureCache(
+            gl,
+            cx,
+            cy,
+            cacheProgram,
+            {
+              opacity: 1,
+              bbox: bbox3,
+              t: t2,
+              tc: {
+                x1: (bbox3[0] === bboxR[0] ? 0 : spread) / w2,
+                y1: (bbox3[1] === bboxR[1] ? 0 : spread) / h2,
+                x3: (bbox3[2] === bboxR[2] ? w2 : (w2 - spread)) / w2,
+                y3: (bbox3[3] === bboxR[3] ? h2 : (h2 - spread)) / h2,
+              },
+              dx: -bbox[0],
+              dy: -bbox[1],
             },
-            dx: -bbox[0],
-            dy: -bbox[1],
-          },
-        );
+          );
+        }
       }
     }
   }
@@ -283,7 +326,8 @@ export function genGaussBlur(
   temp.available = true;
   const listT = temp.list;
   // 由于存在扩展，原本的位置全部偏移，需要重算
-  const frameBuffer = drawInSpreadBbox(gl, main, textureTarget, temp, x, y, w, h);
+  const isWebgl2 = !!root.isWebgl2;
+  const frameBuffer = drawInSpreadBbox(gl, isWebgl2, main, textureTarget, temp, x, y, w, h);
   // texture2Blob(gl, w, h);
   const dualTimes = getDualTimesFromSigma(sigma);
   const boxes = boxesForGauss(sigma * Math.pow(0.5, dualTimes));
@@ -326,24 +370,36 @@ export function genGaussBlur(
         const w2 = bbox2[2] - bbox2[0],
           h2 = bbox2[3] - bbox2[1];
         if (t2 && checkInRect(bbox, undefined, bbox2[0], bbox2[1], w2, h2)) {
-          drawTextureCache(
-            gl,
-            cx,
-            cy,
-            main,
-            {
-              opacity: 1,
-              bbox: new Float32Array([
-                bbox2[0],
-                bbox2[1],
-                bbox2[2],
-                bbox2[3],
-              ]),
-              t: t2,
-              dx: -bbox[0],
-              dy: -bbox[1],
-            },
-          );
+          if (isWebgl2) {
+            drawTextureCache2(
+              gl as WebGL2RenderingContext,
+              cx,
+              cy,
+              main,
+              [{
+                opacity: 1,
+                bbox: bbox2,
+                t: t2,
+                dx: -bbox[0],
+                dy: -bbox[1],
+              }],
+            );
+          }
+          else {
+            drawTextureCache(
+              gl,
+              cx,
+              cy,
+              main,
+              {
+                opacity: 1,
+                bbox: bbox2,
+                t: t2,
+                dx: -bbox[0],
+                dy: -bbox[1],
+              },
+            );
+          }
           hasDraw = true;
         }
       }
@@ -354,7 +410,7 @@ export function genGaussBlur(
       }
     }
     // 所有相邻部分回填
-    drawInOverlay(gl, main, res, listO, bboxR, spread);
+    drawInOverlay(gl, isWebgl2, main, res, listO, bboxR, spread);
   }
   // 删除fbo恢复
   temp.release();
@@ -443,7 +499,8 @@ function genScaleGaussBlur(
   }
   gl.viewport(0, 0, w, h);
   // gl.deleteTexture(t);
-  gl.useProgram(programs.program);
+  // gl.useProgram(programs.program);
+  CacheProgram.useProgram(gl, programs.main);
   // const pixels = new Uint8Array(w * h);
   // gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
   // console.log(performance.now() - p1);
@@ -485,12 +542,13 @@ export function genRadialBlur(
   const w = bboxR[2] - bboxR[0],
     h = bboxR[3] - bboxR[1];
   const programs = root.programs;
-  const program = programs.program;
+  const main = programs.main;
+  const isWebgl2 = !!root.isWebgl2;
   const temp = TextureCache.getEmptyInstance(gl, bboxR);
   temp.available = true;
   const listT = temp.list;
   // 由于存在扩展，原本的位置全部偏移，需要重算
-  const frameBuffer = drawInSpreadBbox(gl, program, textureTarget, temp, x, y, w, h);
+  const frameBuffer = drawInSpreadBbox(gl, isWebgl2, main, textureTarget, temp, x, y, w, h);
   // 生成模糊，先不考虑多块情况下的边界问题，各个块的边界各自为政
   const programRadial = programs.radialProgram;
   gl.useProgram(programRadial);
@@ -522,7 +580,8 @@ export function genRadialBlur(
     for (let i = 0, len = listO.length; i < len; i++) {
       const item = listO[i];
       const { bbox, w, h, t } = item;
-      gl.useProgram(program);
+      // gl.useProgram(program);
+      CacheProgram.useProgram(gl, main);
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER,
         gl.COLOR_ATTACHMENT0,
@@ -548,7 +607,7 @@ export function genRadialBlur(
             gl,
             cx,
             cy,
-            program,
+            main,
             {
               opacity: 1,
               bbox: new Float32Array([
@@ -571,11 +630,12 @@ export function genRadialBlur(
       }
       gl.deleteTexture(t);
     }
-    drawInOverlay(gl, program, res, listO, bboxR, spread);
+    drawInOverlay(gl, isWebgl2, main, res, listO, bboxR, spread);
   }
   // 删除fbo恢复
   temp.release();
-  gl.useProgram(program);
+  // gl.useProgram(program);
+  CacheProgram.useProgram(gl, main);
   releaseFrameBuffer(gl, frameBuffer, W, H);
   return res;
 }
@@ -615,11 +675,12 @@ export function genMotionBlur(
     h = bboxR[3] - bboxR[1];
   const programs = root.programs;
   const main = programs.main;
+  const isWebgl2 = !!root.isWebgl2;
   const temp = TextureCache.getEmptyInstance(gl, bboxR);
   temp.available = true;
   const listT = temp.list;
   // 由于存在扩展，原本的位置全部偏移，需要重算
-  const frameBuffer = drawInSpreadBbox(gl, main, textureTarget, temp, x, y, w, h);
+  const frameBuffer = drawInSpreadBbox(gl, isWebgl2, main, textureTarget, temp, x, y, w, h);
   // 迭代运动模糊，先不考虑多块情况下的边界问题，各个块的边界各自为政
   const programMotion = programs.motionProgram;
   gl.useProgram(programMotion);
@@ -684,7 +745,7 @@ export function genMotionBlur(
       }
       gl.deleteTexture(t);
     }
-    drawInOverlay(gl, main, res, listO, bboxR, spread);
+    drawInOverlay(gl, isWebgl2, main, res, listO, bboxR, spread);
   }
   // 删除fbo恢复
   temp.release();
