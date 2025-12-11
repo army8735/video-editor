@@ -432,6 +432,7 @@ export const onMessage = async (e: MessageEvent<{
     }
     if (!gop.users.length) {
       gop.state = GOPState.NONE;
+      gop.didAudioChunk = false;
     }
   }
 };

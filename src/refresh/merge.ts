@@ -349,7 +349,7 @@ function genTotal(
       // 内循环目标分块
       for (let j = 0, len = listRect.length; j < len; j++) {
         const rect = listRect[j];
-        const { x, y, w, h, x1, y1, x2, y2 } = rect;
+        const { x, y, w, h } = rect;
         let t = rect.t;
         const cx = w * 0.5,
           cy = h * 0.5;

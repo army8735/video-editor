@@ -4,6 +4,7 @@ import TextureCache from './TextureCache';
 import { identity, multiply } from '../math/matrix';
 import Root from '../node/Root';
 import { d2r } from '../math/geom';
+import CacheProgram from '../gl/CacheProgram';
 
 // https://docs.rainmeter.net/tips/colormatrix-guide/
 export function genColorMatrix(
@@ -18,8 +19,8 @@ export function genColorMatrix(
   H: number,
 ) {
   const programs = root.programs;
-  const cmProgram = programs.cmProgram;
-  gl.useProgram(cmProgram);
+  const cm = programs.cm;
+  CacheProgram.useProgram(gl, cm);
   let res: TextureCache = textureTarget;
   let frameBuffer: WebGLFramebuffer | undefined;
   if (hueRotate || saturate !== 1 || brightness !== 1 || contrast !== 1) {
@@ -62,7 +63,7 @@ export function genColorMatrix(
       m[10] *= c;
     }
     const old = res;
-    const t = genColorByMatrix(gl, cmProgram, old, [
+    const t = genColorByMatrix(gl, cm, old, [
       m[0], m[1], m[2], m[3], b + d,
       m[4], m[5], m[6], m[7], b + d,
       m[8], m[9], m[10], m[11], b + d,
@@ -74,7 +75,7 @@ export function genColorMatrix(
       old.release();
     }
   }
-  gl.useProgram(programs.program);
+  CacheProgram.useProgram(gl, programs.main);
   if (frameBuffer) {
     releaseFrameBuffer(gl, frameBuffer, W, H);
     return res;
@@ -86,7 +87,7 @@ export function genColorMatrix(
 
 function genColorByMatrix(
   gl: WebGL2RenderingContext | WebGLRenderingContext,
-  cmProgram: WebGLProgram,
+  cacheProgram: CacheProgram,
   old: TextureCache,
   m: number[],
   frameBuffer?: WebGLFramebuffer,
@@ -111,15 +112,13 @@ function genColorByMatrix(
     else {
       frameBuffer = genFrameBufferWithTexture(gl, tex, w, h);
     }
-    t && drawColorMatrix(gl, cmProgram, t, m);
+    t && drawColorMatrix(gl, cacheProgram, t, m);
     listR.push({
       bbox: bbox.slice(0),
       w,
       h,
       t: tex,
     });
-    // const pixels = new Uint8Array(w * h * 4);
-    // gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
   }
   return { res, frameBuffer };
 }

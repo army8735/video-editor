@@ -396,9 +396,7 @@ function genScaleGaussBlur(
   const dualUp = programs.dualUp;
   let w1 = w, h1 = h;
   let t2: WebGLTexture | undefined = undefined;
-  // const p1 = performance.now();
   if (dualTimes) {
-    // gl.useProgram(programDualDown);
     CacheProgram.useProgram(gl, dualDown);
     t2 = t;
     for (let i = 1; i <= dualTimes; i++) {
@@ -415,13 +413,11 @@ function genScaleGaussBlur(
     }
   }
   // 无论是否缩小都复用box产生模糊
-  // gl.useProgram(programBox);
   CacheProgram.useProgram(gl, box);
   gl.viewport(0, 0, w1, h1);
   let tex = drawBox(gl, box, t2 || t, w1, h1, boxes);
   // 可能再放大dualTimes次
   if (dualTimes) {
-    // gl.useProgram(programDualUp);
     CacheProgram.useProgram(gl, dualUp);
     t2 = tex;
     for (let i = dualTimes - 1; i >= 0; i--) {
@@ -437,12 +433,7 @@ function genScaleGaussBlur(
     tex = t2;
   }
   gl.viewport(0, 0, w, h);
-  // gl.deleteTexture(t);
-  // gl.useProgram(programs.program);
   CacheProgram.useProgram(gl, programs.main);
-  // const pixels = new Uint8Array(w * h);
-  // gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-  // console.log(performance.now() - p1);
   // texture2Blob(gl, w, h);
   return tex;
 }
@@ -518,7 +509,6 @@ export function genRadialBlur(
     for (let i = 0, len = listO.length; i < len; i++) {
       const item = listO[i];
       const { bbox, w, h, t } = item;
-      // gl.useProgram(program);
       CacheProgram.useProgram(gl, main);
       gl.framebufferTexture2D(
         gl.FRAMEBUFFER,
@@ -572,7 +562,6 @@ export function genRadialBlur(
   }
   // 删除fbo恢复
   temp.release();
-  // gl.useProgram(program);
   CacheProgram.useProgram(gl, main);
   releaseFrameBuffer(gl, frameBuffer, W, H);
   return res;
@@ -677,7 +666,6 @@ export function genMotionBlur(
         }
       }
       if (hasDraw) {
-        // gl.useProgram(programMotion);
         CacheProgram.useProgram(gl, motion);
         item.t = drawMotion(gl, motion, t, kernel, radian, offset, w, h);
       }

@@ -415,7 +415,6 @@ export function multiplyRotateY(m: Float32Array, v: number) {
     b = m[1],
     c = m[2],
     d = m[3],
-    e = m[4],
     i = m[8],
     j = m[9],
     k = m[10],

@@ -355,8 +355,14 @@ class Root extends Container {
       uniform: ['u_kernel', 'u_velocity', 'u_texture'],
       attrib: ['a_position', 'a_texCoords'],
     });
-    // this.programs.radialProgram = initShaders(gl, simpleVert, radialFrag);
-    // this.programs.cmProgram = initShaders(gl, simpleVert, cmFrag);
+    this.programs.radial = new CacheProgram(gl, initShaders(gl, simpleVert, radialFrag), {
+      uniform: ['u_kernel', 'u_center', 'u_ratio', 'u_texture'],
+      attrib: ['a_position', 'a_texCoords'],
+    });
+    this.programs.cm = new CacheProgram(gl, initShaders(gl, simpleVert, cmFrag), {
+      uniform: ['u_m', 'u_texture'],
+      attrib: ['a_position', 'a_texCoords'],
+    });
     CacheProgram.useProgram(gl, this.programs.main);
   }
 

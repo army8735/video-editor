@@ -1,6 +1,6 @@
 #version 300 es
 #ifdef GL_ES
-  precision mediump float;
+precision mediump float;
 #endif
 
 in vec4 v_position;

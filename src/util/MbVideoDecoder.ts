@@ -278,7 +278,7 @@ export class MbVideoDecoder extends Event {
     if (!gop) {
       return;
     }
-    this.decodeGOP(gop, time);
+    this.decodeGOP(gop);
     // 视频不停播放，currentTime不断更新调用，向后看currentTime+DUR以内的FramesArea也需要预加载，
     // 向前看currentTime-DUR以外的FramesArea释放清空，另外可能时间轴会跳跃任意值，向后看currentTime+DUR以外的也释放清空
     for (let i = gopIndex - 1; i >= 0; i--) {
@@ -388,7 +388,7 @@ export class MbVideoDecoder extends Event {
     }
   }
 
-  decodeGOP(gop: CacheGOP, time?: number) {
+  decodeGOP(gop: CacheGOP) {
     if (gop.state === GOPState.ERROR) {
       return;
     }
