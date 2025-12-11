@@ -177,6 +177,9 @@ export class CssAnimation extends AbstractAnimation {
     if (fill === 'backwards' || fill === 'both') {
       node.updateFormatStyle(this.currentKeyFrames[0].style);
     }
+    else {
+      node.updateFormatStyle(this.originStyle);
+    }
   }
 
   onFirstInEndDelay() {

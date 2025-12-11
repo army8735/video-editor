@@ -164,6 +164,8 @@ abstract class AbstractAnimation extends Event {
       }
       return;
     }
+    // 真正开始播放后，可能会goto跳到delay，此时还需重新触发onFirstInDelay()样式
+    this.isFirstInDelay = false;
     // 首轮进入真正播放时间，如果没有delay，则初始化时isBegin是true
     if (delay && old < delay && time >= delay) {
       this.isBegin = true;
