@@ -14,15 +14,13 @@ import { loadRange } from './util/loadRangeCache';
 export enum DecoderType {
   META = 0,
   DECODE = 1,
-  DECODE_FRAME = 2,
-  RELEASE = 3,
+  RELEASE = 2,
 }
 
 export enum DecoderEvent {
   META = 'meta',
   ERROR = 'error',
   DECODED = 'decoded',
-  DECODED_FRAME = 'decoded_frame',
 }
 
 export enum GOPState {

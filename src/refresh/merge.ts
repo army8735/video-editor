@@ -8,7 +8,7 @@ import { mergeBbox } from '../math/bbox';
 import TextureCache, { SubTexture } from './TextureCache';
 import config from '../config';
 import {
-  createTexture, DrawData,
+  createTexture,
   drawMbm,
   drawTextureCache,
   // texture2Blob,
