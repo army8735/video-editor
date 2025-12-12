@@ -43,6 +43,7 @@ class Root extends Container {
   audioContext: AudioContext;
   contentLoadingCount: number; // 各子节点控制（如视频）加载中++，完成后--，为0时说明渲染完整
   lastContentLoadingCount: number;
+  firstDraw: boolean;
 
   constructor(props: RootProps, children: Node[] = []) {
     super(props, children);
@@ -81,6 +82,7 @@ class Root extends Container {
     this.aniController = new AniController(this.audioContext);
     this.contentLoadingCount = 0;
     this.lastContentLoadingCount = 0;
+    this.firstDraw = true;
   }
 
   appendTo(canvas: HTMLCanvasElement) {
@@ -292,12 +294,14 @@ class Root extends Container {
           }
         }
         else {
-          if (this.lastContentLoadingCount) {
+          // 等待到加载完成，或者第一次渲染且没有任何加载资源
+          if (this.lastContentLoadingCount || this.firstDraw) {
             this.emit(CAN_PLAY);
           }
           this.emit(REFRESH_COMPLETE);
         }
         this.lastContentLoadingCount = this.contentLoadingCount;
+        this.firstDraw = false;
       }
     }
   }

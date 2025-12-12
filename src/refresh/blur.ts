@@ -442,8 +442,8 @@ export function genRadialBlur(
   gl: WebGL2RenderingContext | WebGLRenderingContext,
   root: Root,
   textureTarget: TextureCache,
-  sigma: number,
-  center: [number, number],
+  sigma: number, // 采样距离
+  center: [number, number], // 中心点
   W: number,
   H: number,
 ) {
@@ -479,8 +479,8 @@ export function genRadialBlur(
   // 由于存在扩展，原本的位置全部偏移，需要重算
   const frameBuffer = drawInSpreadBbox(gl, main, textureTarget, temp, x, y, w, h);
   // 生成模糊，先不考虑多块情况下的边界问题，各个块的边界各自为政
-  const programRadial = programs.radialProgram;
-  gl.useProgram(programRadial);
+  const radial = programs.radial;
+  CacheProgram.useProgram(gl, radial);
   const res = TextureCache.getEmptyInstance(gl, bboxR);
   res.available = true;
   const listR = res.list;
@@ -495,7 +495,7 @@ export function genRadialBlur(
       (cx0 - bbox[0] + bboxR[0]) / w2,
       (cy0 - bbox[1] + bboxR[1]) / h2,
     ] as [number, number];
-    const tex = t && drawRadial(gl, programRadial, t, ratio, spread, center2, w, h);
+    const tex = t && drawRadial(gl, radial, t, ratio, spread, center2, w, h);
     listR.push({
       bbox: bbox.slice(0),
       w,
@@ -553,8 +553,8 @@ export function genRadialBlur(
         }
       }
       if (hasDraw) {
-        gl.useProgram(programRadial);
-        item.t = drawRadial(gl, programRadial, t, ratio, spread, center2, w, h);
+        CacheProgram.useProgram(gl, radial);
+        item.t = drawRadial(gl, radial, t, ratio, spread, center2, w, h);
       }
       gl.deleteTexture(t);
     }

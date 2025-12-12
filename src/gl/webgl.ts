@@ -654,9 +654,9 @@ export function drawMotion(
   gl: WebGL2RenderingContext | WebGLRenderingContext,
   cacheProgram: CacheProgram,
   texture: WebGLTexture,
-  kernel: number,
-  radian: number,
-  offset: number,
+  kernel: number, // 半径
+  radian: number, // 角度
+  offset: number, // 偏移，和半径相同就等于是一个方向模糊
   width: number,
   height: number,
 ) {
@@ -751,52 +751,7 @@ export function drawRadial(
   return res;
 }
 
-export function drawShadow(
-  gl: WebGL2RenderingContext | WebGLRenderingContext,
-  cacheProgram: CacheProgram,
-  texture: WebGLTexture,
-  color: number[],
-) {
-  const { pointBuffer, a_position, texBuffer, a_texCoords } = preSingle(gl, cacheProgram);
-  // 纹理单元
-  bindTexture(gl, texture, 0);
-  const u_texture = cacheProgram.uniform.u_texture;
-  gl.uniform1i(u_texture, 0);
-  // shadow颜色
-  const u_color = cacheProgram.uniform.u_color;
-  const a = color[3];
-  gl.uniform4f(u_color, color[0] * a, color[1] * a, color[2] * a, a);
-  // 渲染并销毁
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  gl.deleteBuffer(pointBuffer);
-  gl.deleteBuffer(texBuffer);
-  gl.disableVertexAttribArray(a_position);
-  gl.disableVertexAttribArray(a_texCoords);
-}
-
 export const drawMbm = drawMask;
-
-export function drawTint(
-  gl: WebGL2RenderingContext | WebGLRenderingContext,
-  cacheProgram: CacheProgram,
-  texture: WebGLTexture,
-  tint: number[],
-) {
-  const { pointBuffer, a_position, texBuffer, a_texCoords } = preSingle(gl, cacheProgram);
-  // 纹理单元
-  bindTexture(gl, texture, 0);
-  const u_texture = cacheProgram.uniform.u_texture;
-  gl.uniform1i(u_texture, 0);
-  const u_tint = cacheProgram.uniform.u_tint;
-  const color = color2gl(tint);
-  gl.uniform4f(u_tint, color[0] * color[3], color[1] * color[3], color[2] * color[3], color[3]);
-  // 渲染并销毁
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  gl.deleteBuffer(pointBuffer);
-  gl.deleteBuffer(texBuffer);
-  gl.disableVertexAttribArray(a_position);
-  gl.disableVertexAttribArray(a_texCoords);
-}
 
 export function drawColorMatrix(
   gl: WebGL2RenderingContext | WebGLRenderingContext,

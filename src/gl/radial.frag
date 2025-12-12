@@ -20,7 +20,7 @@ void main(void) {
   int k = u_kernel - 1;
   float total = 1.0;
   for (int i = 1; i < MAX_KERNEL_SIZE - 1; i++) {
-    if (i == k) {
+    if (i >= k) {
       break;
     }
     total++;
