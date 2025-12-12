@@ -61,38 +61,6 @@ export function calMatrixByOrigin(m: Float32Array, ox: number, oy: number) {
   return res;
 }
 
-export function calMatrix(style: Style, width = 0, height = 0) {
-  const transform = identity();
-  transform[12] = style.translateX ? calSize(style.translateX, width) : 0;
-  transform[13] = style.translateY ? calSize(style.translateY, height) : 0;
-  const rotateZ = style.rotateZ ? (style.rotateZ.v as number) : 0;
-  const scaleX = style.scaleX ? (style.scaleX.v as number) : 1;
-  const scaleY = style.scaleY ? (style.scaleY.v as number) : 1;
-  if (isE(transform)) {
-    calRotateZ(transform, rotateZ);
-  }
-  else if (rotateZ) {
-    multiplyRotateZ(transform, d2r(rotateZ));
-  }
-  if (scaleX !== 1) {
-    if (isE(transform)) {
-      transform[0] = scaleX;
-    }
-    else {
-      multiplyScaleX(transform, scaleX);
-    }
-  }
-  if (scaleY !== 1) {
-    if (isE(transform)) {
-      transform[5] = scaleY;
-    }
-    else {
-      multiplyScaleY(transform, scaleY);
-    }
-  }
-  return transform;
-}
-
 export function calTransformByMatrixAndOrigin(matrix: Float32Array, x: number, y: number) {
   let res = matrix.slice(0) as Float32Array;
   res = multiplyTfo(res, x, y);
@@ -118,7 +86,6 @@ export default {
   calRotateXRadian,
   calRotateZ,
   calRotateZRadian,
-  calMatrix,
   calMatrixByOrigin,
   calTransformByMatrixAndOrigin,
   calPerspectiveMatrix,

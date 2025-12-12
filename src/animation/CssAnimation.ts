@@ -15,7 +15,7 @@ export type KeyFrame = {
   style: Partial<Style>;
   time: number;
   easing?: (v: number) => number;
-  transition: { key: keyof Style, diff: number | { radius: number, angle?: number, offset?: number } }[]; // 到下帧有变化的key和差值
+  transition: { key: keyof Style, diff: number | [number, number] | { radius: number, angle?: number, offset?: number } }[]; // 到下帧有变化的key和差值
   fixed: (keyof Style)[]; // 固定不变化的key
 };
 
@@ -143,12 +143,24 @@ export class CssAnimation extends AbstractAnimation {
         if (key === 'opacity'
           || key === 'translateX'
           || key === 'translateY'
+          || key === 'translateZ'
           || key === 'scaleX'
           || key === 'scaleY'
+          || key === 'rotateX'
+          || key === 'rotateY'
           || key === 'rotateZ'
+          || key === 'perspective'
+          || key === 'perspectiveSelf'
         ) {
           const o = Object.assign({}, style[key]) as StyleNumValue;
           o.v += (diff as number) * percent;
+          update[key] = o;
+        }
+        else if (key === 'transformOrigin' || key === 'perspectiveOrigin') {
+          const v = style[key] as [StyleNumValue, StyleNumValue];
+          const o = [Object.assign({}, v[0]), Object.assign({}, v[1])] as [StyleNumValue, StyleNumValue];
+          o[0].v += (diff as [number, number])[0] * percent;
+          o[1].v += (diff as [number, number])[1] * percent;
           update[key] = o;
         }
         else if (key === 'blur') {
@@ -342,14 +354,25 @@ function calTransition(node: Node, keyFrames: KeyFrame[], keys: (keyof Style)[])
     keys.forEach(key => {
       const p = prevStyle[key];
       const n = nextStyle[key];
-      if (key === 'opacity' || key === 'scaleX' || key === 'scaleY' || key === 'rotateZ') {
+      if (key === 'opacity'
+        || key === 'scaleX'
+        || key === 'scaleY'
+        || key === 'rotateX'
+        || key === 'rotateY'
+        || key === 'rotateZ'
+      ) {
         prev.transition.push({
           key,
           diff: (n as StyleNumValue).v - (p as StyleNumValue).v,
         });
       }
       // 数值单位考虑不同单位换算
-      else if (key === 'translateX' || key === 'translateY') {
+      else if (key === 'translateX'
+        || key === 'translateY'
+        || key === 'translateZ'
+        || key === 'perspective'
+        || key === 'perspectiveSelf'
+      ) {
         if ((p as StyleNumValue).u === (n as StyleNumValue).u) {
           prev.transition.push({
             key,
@@ -358,7 +381,7 @@ function calTransition(node: Node, keyFrames: KeyFrame[], keys: (keyof Style)[])
         }
         else {
           let unit = 0;
-          if (key === 'translateX') {
+          if (key === 'translateX' || key === 'translateZ') {
             unit = node.computedStyle.width;
           }
           else if (key === 'translateY') {
@@ -370,7 +393,28 @@ function calTransition(node: Node, keyFrames: KeyFrame[], keys: (keyof Style)[])
           });
         }
       }
-      else if (key === 'visibility') {
+      else if (key === 'transformOrigin' || key === 'perspectiveOrigin') {
+        const pv = p as [StyleNumValue, StyleNumValue];
+        const nv = n as [StyleNumValue, StyleNumValue];
+        const diff: [number, number] = [0, 0];
+        for (let i = 0; i < 2; i++) {
+          if (pv[i].u === nv[i].u) {
+            diff.push(nv[i].v - pv[i].v);
+          }
+          else {
+            let unit = i ? node.computedStyle.height : node.computedStyle.width;
+            prev.transition.push({
+              key,
+              diff: calLengthByUnit(nv[i], pv[i], unit),
+            });
+          }
+        }
+        prev.transition.push({
+          key,
+          diff,
+        });
+      }
+      else if (key === 'visibility' || key === 'overflow') {
         next.fixed.push(key);
         // fixed很特殊首帧渲染需要
         if (i === 1) {

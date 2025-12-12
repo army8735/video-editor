@@ -12,10 +12,10 @@ export enum RefreshLevel {
   SCALE_X =            0b000000000000010000000,
   SCALE_Y =            0b000000000000100000000,
   SCALE =              0b000000000000110000000,
-  TRANSFORM =          0b000000000001000000000,
+  PERSPECTIVE_SELF =   0b000000000001000000000,
   TRANSFORM_ORIGIN =   0b000000000010000000000,
-  PERSPECTIVE =        0b000000000100000000000,
   TRANSFORM_ALL =      0b000000000011111111110,
+  PERSPECTIVE =        0b000000000100000000000,
   OPACITY =            0b000000001000000000000,
   FILTER =             0b000000010000000000000,
   MIX_BLEND_MODE =     0b000000100000000000000,
@@ -93,8 +93,8 @@ export function getLevel(k: string) {
   if (k === 'scaleY') {
     return RefreshLevel.SCALE_Y;
   }
-  if (k === 'matrix') {
-    return RefreshLevel.TRANSFORM;
+  if (k === 'perspectiveSelf') {
+    return RefreshLevel.PERSPECTIVE_SELF;
   }
   if (k === 'transformOrigin') {
     return RefreshLevel.TRANSFORM_ORIGIN;

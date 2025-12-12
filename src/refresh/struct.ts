@@ -127,7 +127,7 @@ function calWorldMatrixAndOpacity(node: Node, i: number, parent?: Container) {
     node.hasCacheOp = true;
   }
   if (!hasCacheMw) {
-    const ppm = parent ? parent.perspectiveMatrix : undefined;
+    const ppm = parent?.perspectiveMatrix;
     let matrix = node.matrix;
     if (ppm && !isE(ppm)) {
       matrix = multiply(ppm, matrix);

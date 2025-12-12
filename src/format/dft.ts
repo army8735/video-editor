@@ -46,6 +46,7 @@ export const DEFAULT_STYLE = {
   rotateZ: 0,
   transformOrigin: ['center', 'center'],
   perspective: 0,
+  perspectiveSelf: 0,
   perspectiveOrigin: ['center', 'center'],
   mixBlendMode: 'normal',
   pointerEvents: true,
@@ -59,4 +60,5 @@ export const DEFAULT_STYLE = {
   saturate: 1,
   brightness: 1,
   contrast: 1,
+  overflow: 'clip',
 };

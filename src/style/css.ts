@@ -11,6 +11,7 @@ import {
   FONT_STYLE,
   MIX_BLEND_MODE,
   OBJECT_FIT,
+  OVERFLOW,
   PATTERN_FILL_TYPE,
   RICH_KEYS,
   STROKE_LINE_CAP,
@@ -33,7 +34,8 @@ function compatibleTransform(k: string, v: StyleNumValue) {
   if (k === 'scaleX' || k === 'scaleY') {
     v.u = StyleUnit.NUMBER;
   }
-  else if (k === 'translateX' || k === 'translateY' || k === 'translateZ' || k === 'perspective') {
+  else if (k === 'translateX' || k === 'translateY' || k === 'translateZ'
+    || k === 'perspective' || k === 'perspectiveSelf') {
     if (v.u === StyleUnit.NUMBER) {
       v.u = StyleUnit.PX;
     }
@@ -423,7 +425,8 @@ export function normalize(style: Partial<JStyle>) {
   if (style.strokeMiterlimit !== undefined) {
     res.strokeMiterlimit = { v: style.strokeMiterlimit, u: StyleUnit.NUMBER };
   }
-  (['translateX', 'translateY', 'translateZ', 'skewX', 'skewY', 'scaleX', 'scaleY', 'rotateX', 'rotateY', 'rotateZ', 'perspective'] as const).forEach((k) => {
+  (['translateX', 'translateY', 'translateZ', 'skewX', 'skewY', 'scaleX', 'scaleY', 'rotateX', 'rotateY', 'rotateZ',
+    'perspective', 'perspectiveSelf'] as const).forEach((k) => {
     const v = style[k];
     if (v === undefined) {
       return;
@@ -593,6 +596,20 @@ export function normalize(style: Partial<JStyle>) {
       }
       res[k] = n;
     });
+  }
+  if (style.overflow !== undefined) {
+    const overflow = style.overflow;
+    let v = OVERFLOW.VISIBLE;
+    if (overflow === 'hidden') {
+      v = OVERFLOW.HIDDEN;
+    }
+    else if (overflow === 'clip') {
+      v = OVERFLOW.CLIP;
+    }
+    res.overflow = {
+      v,
+      u: StyleUnit.NUMBER,
+    };
   }
   return res;
 }

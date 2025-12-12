@@ -175,6 +175,7 @@ export type JStyle = {
   rotateZ: number;
   transformOrigin: ([Origin, Origin]) | string;
   perspective: number;
+  perspectiveSelf: number;
   perspectiveOrigin: ([Origin, Origin]) | string;
   mixBlendMode:
     | 'normal'
@@ -208,6 +209,7 @@ export type JStyle = {
   saturate: number | string;
   brightness: number | string;
   contrast: number | string;
+  overflow: 'visible' | 'hidden' | 'clip';
 };
 
 export type ResizeStyle = Partial<Pick<JStyle, 'left' | 'right' | 'top' | 'bottom' | 'width' | 'height' | 'scaleX' | 'scaleY'>>;

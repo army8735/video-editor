@@ -210,6 +210,7 @@ export type Style = {
   rotateZ: StyleNumValue;
   transformOrigin: [StyleNumValue, StyleNumValue];
   perspective: StyleNumValue;
+  perspectiveSelf: StyleNumValue;
   perspectiveOrigin: [StyleNumValue, StyleNumValue];
   pointerEvents: StyleBoolValue;
   mixBlendMode: StyleMbmValue;
@@ -223,6 +224,7 @@ export type Style = {
   saturate: StyleNumValue;
   brightness: StyleNumValue;
   contrast: StyleNumValue;
+  overflow: StyleOverflowValue;
 };
 
 export type ComputedStyle = {
@@ -273,6 +275,7 @@ export type ComputedStyle = {
   rotateZ: number;
   transformOrigin: [number, number];
   perspective: number,
+  perspectiveSelf: number,
   perspectiveOrigin: [number, number];
   mixBlendMode: MIX_BLEND_MODE;
   pointerEvents: boolean;
@@ -286,6 +289,7 @@ export type ComputedStyle = {
   saturate: number;
   brightness: number;
   contrast: number;
+  overflow: number;
 };
 
 export enum TEXT_ALIGN {
@@ -393,6 +397,7 @@ export enum TEXT_DECORATION {
 export enum OVERFLOW {
   VISIBLE = 0,
   HIDDEN = 1,
+  CLIP = 2,
 }
 
 export enum OBJECT_FIT {

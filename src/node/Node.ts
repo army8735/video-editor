@@ -69,7 +69,7 @@ class Node extends Event {
   transform: Float32Array; // 不包含transformOrigin
   matrix: Float32Array; // 包含transformOrigin
   _matrixWorld: Float32Array; // 世界transform
-  perspectiveMatrix?: Float32Array; // 包含perspective
+  perspectiveMatrix?: Float32Array; // 透视矩阵作用于所有孩子
   hasCacheMw: boolean; // 是否计算过世界matrix
   localMwId: number; // 当前计算后的世界matrix的id，每次改变自增
   parentMwId: number; // 父级的id副本，用以对比确认父级是否变动过
@@ -341,6 +341,7 @@ class Node extends Event {
     computedStyle.borderTopRightRadius = style.borderTopRightRadius.v;
     computedStyle.borderBottomLeftRadius = style.borderBottomLeftRadius.v;
     computedStyle.borderBottomRightRadius = style.borderBottomRightRadius.v;
+    computedStyle.overflow = style.overflow.v;
     this.clearTexCache(true);
     // 只有重布局或者改transform才影响，普通repaint不变
     if (lv & RefreshLevel.REFLOW_TRANSFORM) {
@@ -390,7 +391,7 @@ class Node extends Event {
     let optimize = true;
     if (
       lv >= RefreshLevel.REFLOW ||
-      lv & RefreshLevel.TRANSFORM ||
+      lv & RefreshLevel.PERSPECTIVE_SELF ||
       (lv & RefreshLevel.SCALE_X && !computedStyle.scaleX) || // 优化计算scale不能为0，无法计算倍数差
       (lv & RefreshLevel.SCALE_Y && !computedStyle.scaleY) ||
       (lv & RefreshLevel.ROTATE_Z && (computedStyle.rotateX || computedStyle.rotateY || computedStyle.skewX || computedStyle.skewY)) ||
@@ -474,9 +475,9 @@ class Node extends Event {
       computedStyle.transformOrigin = tfo as [number, number];
       // 一般走这里，特殊将left/top和translate合并一起加到matrix上，这样渲染视为[0, 0]开始
       computedStyle.translateX = calSize(style.translateX, this.computedStyle.width);
-      transform[12] = computedStyle.left + computedStyle.translateX;
+      const tx = transform[12] = computedStyle.left + computedStyle.translateX;
       computedStyle.translateY = calSize(style.translateY, this.computedStyle.height);
-      transform[13] = computedStyle.top + computedStyle.translateY;
+      const ty = transform[13] = computedStyle.top + computedStyle.translateY;
       computedStyle.translateZ = calSize(style.translateZ, this.computedStyle.width);
       transform[14] = computedStyle.translateZ;
       const rotateX = style.rotateX ? style.rotateX.v : 0;
@@ -549,7 +550,13 @@ class Node extends Event {
           multiplyScaleY(transform, scaleY);
         }
       }
-      const t = calMatrixByOrigin(transform, tfo[0], tfo[1]);
+      let t = calMatrixByOrigin(transform, tfo[0], tfo[1]);
+      // 特殊的相对自身的3d透视
+      computedStyle.perspectiveSelf = calSize(style.perspectiveSelf, this.computedStyle.width);
+      if (computedStyle.perspectiveSelf >= 1) {
+        const pm = calPerspectiveMatrix(computedStyle.perspectiveSelf, tfo[0] + tx, tfo[1] + ty);
+        t = multiply(pm, t);
+      }
       assignMatrix(matrix, t);
     }
   }
@@ -566,10 +573,9 @@ class Node extends Event {
     });
     computedStyle.perspectiveOrigin = pfo as [number, number];
     computedStyle.perspective = calSize(style.perspective, this.computedStyle.width);
+    computedStyle.perspectiveSelf = calSize(style.perspectiveSelf, this.computedStyle.width);
     if (computedStyle.perspective >= 1) {
-      this.perspectiveMatrix = identity();
-      const t = calPerspectiveMatrix(computedStyle.perspective, pfo[0], pfo[1]);
-      assignMatrix(this.perspectiveMatrix, t);
+      this.perspectiveMatrix = calPerspectiveMatrix(computedStyle.perspective, pfo[0], pfo[1]);
     }
     else {
       this.perspectiveMatrix = undefined;
@@ -813,6 +819,7 @@ class Node extends Event {
     res.saturate = style.saturate.v + '%';
     res.brightness = style.brightness.v + '%';
     res.contrast = style.contrast.v + '%';
+    res.overflow = ['visible', 'hidden', 'clip'][style.overflow.v];
     return res as JStyle;
   }
 
@@ -1352,9 +1359,9 @@ class Node extends Event {
       computedStyle.bottom += d;
     }
     // 影响matrix，这里不能用优化optimize计算，必须重新计算，因为最终值是left+translateX
-    this.refreshLevel |= RefreshLevel.TRANSFORM;
-    root.rl |= RefreshLevel.TRANSFORM;
-    this.calMatrix(RefreshLevel.TRANSFORM);
+    this.refreshLevel |= RefreshLevel.TRANSFORM_ALL;
+    root.rl |= RefreshLevel.TRANSFORM_ALL;
+    this.calMatrix(RefreshLevel.TRANSFORM_ALL);
     // 记得重置
     this._rect = undefined;
     this._bbox = undefined;
