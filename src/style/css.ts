@@ -35,7 +35,7 @@ function compatibleTransform(k: string, v: StyleNumValue) {
     v.u = StyleUnit.NUMBER;
   }
   else if (k === 'translateX' || k === 'translateY' || k === 'translateZ'
-    || k === 'perspective' || k === 'perspectiveSelf') {
+    || k === 'perspective') {
     if (v.u === StyleUnit.NUMBER) {
       v.u = StyleUnit.PX;
     }
@@ -426,7 +426,7 @@ export function normalize(style: Partial<JStyle>) {
     res.strokeMiterlimit = { v: style.strokeMiterlimit, u: StyleUnit.NUMBER };
   }
   (['translateX', 'translateY', 'translateZ', 'skewX', 'skewY', 'scaleX', 'scaleY', 'rotateX', 'rotateY', 'rotateZ',
-    'perspective', 'perspectiveSelf'] as const).forEach((k) => {
+    'perspective'] as const).forEach((k) => {
     const v = style[k];
     if (v === undefined) {
       return;
@@ -602,9 +602,6 @@ export function normalize(style: Partial<JStyle>) {
     let v = OVERFLOW.VISIBLE;
     if (overflow === 'hidden') {
       v = OVERFLOW.HIDDEN;
-    }
-    else if (overflow === 'clip') {
-      v = OVERFLOW.CLIP;
     }
     res.overflow = {
       v,

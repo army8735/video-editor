@@ -7,14 +7,14 @@ in vec4 v_position;
 in vec2 v_texCoords;
 in float v_opacity;
 in float v_textureIndex;
-in vec4 v_clip;
+//in vec4 v_clip;
 out vec4 fragColor;
 uniform sampler2D u_texture[16];
 
 void main() {
-  if (v_position.x < v_clip[0] || v_position.x > v_clip[2] || v_position.y < v_clip[1] || v_position.y > v_clip[3]) {
-    discard;
-  }
+//  if (v_position.x < v_clip[0] || v_position.x > v_clip[2] || v_position.y < v_clip[1] || v_position.y > v_clip[3]) {
+//    discard;
+//  }
   if (v_opacity <= 0.0) {
     discard;
   }

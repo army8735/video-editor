@@ -1,17 +1,17 @@
-import { BLUR, ComputedStyle, MIX_BLEND_MODE, VISIBILITY } from '../style/define';
+import { BLUR, ComputedStyle, MIX_BLEND_MODE, OVERFLOW, VISIBILITY } from '../style/define';
 import Node from '../node/Node';
 import Root from '../node/Root';
 import { RefreshLevel } from './level';
-import { assignMatrix, multiply, toE } from '../math/matrix';
+import { assignMatrix, isE, multiply, toE } from '../math/matrix';
 import { Struct } from './struct';
-import { mergeBbox } from '../math/bbox';
+import { ceilBbox, mergeBbox } from '../math/bbox';
 import TextureCache, { SubTexture } from './TextureCache';
 import config from '../config';
 import {
   createTexture,
   drawMbm,
   drawTextureCache,
-  // texture2Blob,
+  texture2Blob,
 } from '../gl/webgl';
 import inject from '../util/inject';
 import { genGaussBlur, genMotionBlur, genRadialBlur } from './blur';
@@ -19,6 +19,7 @@ import { genFrameBufferWithTexture, releaseFrameBuffer } from './fb';
 import { checkInRect } from './check';
 import { genColorMatrix } from './cm';
 import CacheProgram from '../gl/CacheProgram';
+import { calMatrixByOrigin, calPerspectiveMatrix } from '../style/transform';
 
 export type Merge = {
   i: number;
@@ -61,11 +62,15 @@ export function genMerge(
       saturate,
       brightness,
       contrast,
+      overflow,
     } = computedStyle;
     // 非单节点透明需汇总子树，有mask的也需要，已经存在的无需汇总
     const needTotal =
-      ((opacity > 0 && opacity < 1)
-        || mixBlendMode !== MIX_BLEND_MODE.NORMAL)
+      (
+        (opacity > 0 && opacity < 1)
+        || mixBlendMode !== MIX_BLEND_MODE.NORMAL
+        || overflow === OVERFLOW.HIDDEN
+      )
       && total > 0
       && !textureTotal?.available;
     const needBlur =
@@ -190,6 +195,12 @@ function genBboxTotal(
 ) {
   const res = (node.tempBbox || node._bbox || node.bbox).slice(0);
   toE(node.tempMatrix);
+  // overflow加速
+  if (node.computedStyle.overflow === OVERFLOW.HIDDEN) {
+    return res;
+  }
+  // console.log(node.perspectiveMatrix)
+  const pm = node.perspectiveMatrix;
   for (let i = index + 1, len = index + total + 1; i < len; i++) {
     const { node: node2, total: total2 } = structs[i];
     const target = node2.textureTarget;
@@ -197,6 +208,7 @@ function genBboxTotal(
     if (isNew) {
       const parent = node2.parent!;
       const ppm = parent.perspectiveMatrix;
+      // console.log(i, ppm);
       const m = multiply(parent.tempMatrix, ppm ? multiply(ppm, node2.matrix) : node2.matrix);
       assignMatrix(node2.tempMatrix, m);
       // 合并不能用textureCache，因为如果有shadow的话bbox不正确
@@ -226,10 +238,10 @@ type ListRect = Omit<SubTexture, 't'> & {
   y: number;
   t?: WebGLTexture;
   ref?: SubTexture;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
+  // x1: number;
+  // y1: number;
+  // x2: number;
+  // y2: number;
 };
 
 function genTotal(
@@ -257,10 +269,7 @@ function genTotal(
   }
   const bbox = node.tempBbox!;
   node.tempBbox = undefined;
-  bbox[0] = Math.floor(bbox[0]);
-  bbox[1] = Math.floor(bbox[1]);
-  bbox[2] = Math.ceil(bbox[2]);
-  bbox[3] = Math.ceil(bbox[3]);
+  ceilBbox(bbox);
   // 单个叶子节点也不需要，就是本身节点的内容
   if (!total && !force) {
     let target = node.textureCache;
@@ -276,12 +285,8 @@ function genTotal(
   // 创建一个空白纹理来绘制，尺寸由于bbox已包含整棵子树内容可以直接使用
   const x = bbox[0],
     y = bbox[1];
-  const x2 = x,
-    y2 = y;
   const w = Math.ceil(bbox[2] - x),
     h = Math.ceil(bbox[3] - y);
-  const w2 = w,
-    h2 = h;
   const res = TextureCache.getEmptyInstance(gl, bbox);
   res.available = true;
   const list = res.list;
@@ -289,10 +294,10 @@ function genTotal(
   const UNIT = config.maxTextureSize;
   const listRect: ListRect[] = [];
   // 要先按整数创建纹理块，再反向计算bbox（真实尺寸/scale），创建完再重新遍历按节点顺序渲染，因为有bgBlur存在
-  for (let i = 0, len = Math.ceil(h2 / UNIT); i < len; i++) {
-    for (let j = 0, len2 = Math.ceil(w2 / UNIT); j < len2; j++) {
-      const width = j === len2 - 1 ? (w2 - j * UNIT) : UNIT;
-      const height = i === len - 1 ? (h2 - i * UNIT) : UNIT;
+  for (let i = 0, len = Math.ceil(h / UNIT); i < len; i++) {
+    for (let j = 0, len2 = Math.ceil(w / UNIT); j < len2; j++) {
+      const width = j === len2 - 1 ? (w - j * UNIT) : UNIT;
+      const height = i === len - 1 ? (h - i * UNIT) : UNIT;
       const x0 = x + j * UNIT,
         y0 = y + i * UNIT;
       const bbox = new Float32Array([
@@ -304,12 +309,12 @@ function genTotal(
       // 如有设置frame的overflow裁剪
       let xa = -1, ya = -1, xb = 1, yb = 1;
       listRect.push({
-        x: x2 + j * UNIT, // 坐标checkInRect用，同时真实渲染时才创建纹理，防止空白区域浪费显存，最后过滤
-        y: y2 + i * UNIT,
+        x: x + j * UNIT, // 坐标checkInRect用，同时真实渲染时才创建纹理，防止空白区域浪费显存，最后过滤
+        y: y + i * UNIT,
         w: width,
         h: height,
         bbox,
-        x1: xa, y1: ya, x2: xb, y2: yb,
+        // x1: xa, y1: ya, x2: xb, y2: yb,
       });
     }
   }
@@ -328,13 +333,26 @@ function genTotal(
       opacity = node2.tempOpacity = 1;
       toE(node2.tempMatrix);
       matrix = node2.tempMatrix;
+      // 透视的origin要重算
+      if (computedStyle.perspective >= 1) {
+        const pfo = computedStyle.perspectiveOrigin;
+        const pm = calPerspectiveMatrix(computedStyle.perspective, pfo[0] - x, pfo[1] - y);
+        assignMatrix(matrix, pm);
+      }
     }
     // 子节点的matrix计算比较复杂，可能dx/dy不是0原点，造成transformOrigin偏移需重算matrix
     else {
       const parent = node2.parent!;
       opacity = node2.tempOpacity = computedStyle.opacity * parent.tempOpacity;
-      const ppm = parent.perspectiveMatrix;
-      matrix = multiply(parent.tempMatrix, ppm ? multiply(ppm, node2.matrix) : node2.matrix);
+      const transform = node2.transform;
+      if (!isE(transform)) {
+        const tfo = computedStyle.transformOrigin;
+        const m = calMatrixByOrigin(transform, tfo[0] - x, tfo[1] - y);
+        matrix = multiply(parent.tempMatrix, m);
+      }
+      else {
+        matrix = parent.tempMatrix;
+      }
     }
     assignMatrix(node2.tempMatrix, matrix);
     let target2 = node2.textureTarget;
@@ -401,6 +419,7 @@ function genTotal(
                 dy: -rect.y,
               },
             );
+            texture2Blob(gl, w, h);
             // 这里才是真正生成mbm
             if (mixBlendMode !== MIX_BLEND_MODE.NORMAL && tex) {
               t = rect.t = genMbm(
@@ -422,6 +441,7 @@ function genTotal(
       i += total2;
     }
   }
+  // texture2Blob(gl, w, h);
   // 删除fbo恢复
   if (frameBuffer) {
     releaseFrameBuffer(gl, frameBuffer, W, H);

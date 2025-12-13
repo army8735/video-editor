@@ -150,7 +150,6 @@ export class CssAnimation extends AbstractAnimation {
           || key === 'rotateY'
           || key === 'rotateZ'
           || key === 'perspective'
-          || key === 'perspectiveSelf'
         ) {
           const o = Object.assign({}, style[key]) as StyleNumValue;
           o.v += (diff as number) * percent;
@@ -371,7 +370,6 @@ function calTransition(node: Node, keyFrames: KeyFrame[], keys: (keyof Style)[])
         || key === 'translateY'
         || key === 'translateZ'
         || key === 'perspective'
-        || key === 'perspectiveSelf'
       ) {
         if ((p as StyleNumValue).u === (n as StyleNumValue).u) {
           prev.transition.push({

@@ -212,7 +212,7 @@ class Root extends Container {
         if (lv & RefreshLevel.TRANSFORM_ALL) {
           node.calMatrix(lv);
         }
-        if (lv & RefreshLevel.PERSPECTIVE) {
+        if (lv & (RefreshLevel.PERSPECTIVE | RefreshLevel.TRANSLATE)) {
           node.calPerspective();
         }
         if (lv & RefreshLevel.OPACITY) {

@@ -12,10 +12,26 @@ export function mergeBbox(
   if (arguments.length === 3) {
     let [x1, y1, x2, y2] = a as Float32Array;
     if (!isE(b as Float32Array)) {
-      const t1 = calPoint({ x: x1, y: y1 }, b as Float32Array);
-      const t2 = calPoint({ x: x1, y: y2 }, b as Float32Array);
-      const t3 = calPoint({ x: x2, y: y1 }, b as Float32Array);
-      const t4 = calPoint({ x: x2, y: y2 }, b as Float32Array);
+      let t1 = calPoint({ x: x1, y: y1 }, b as Float32Array);
+      let t2 = calPoint({ x: x1, y: y2 }, b as Float32Array);
+      let t3 = calPoint({ x: x2, y: y1 }, b as Float32Array);
+      let t4 = calPoint({ x: x2, y: y2 }, b as Float32Array);
+      if (t1.w && t1.w !== 1) {
+        t1.x /= t1.w;
+        t1.y /= t1.w;
+      }
+      if (t2.w && t2.w !== 1) {
+        t2.x /= t2.w;
+        t2.y /= t2.w;
+      }
+      if (t3.w && t3.w !== 1) {
+        t3.x /= t3.w;
+        t3.y /= t3.w;
+      }
+      if (t4.w && t4.w !== 1) {
+        t4.x /= t4.w;
+        t4.y /= t4.w;
+      }
       x1 = Math.min(t1.x, t2.x, t3.x, t4.x);
       y1 = Math.min(t1.y, t2.y, t3.y, t4.y);
       x2 = Math.max(t1.x, t2.x, t3.x, t4.x);
@@ -161,8 +177,16 @@ export function getShapeGroupRect(points: number[][][], res?: Float32Array) {
   return res;
 }
 
+export function ceilBbox(bbox: Float32Array) {
+  bbox[0] = Math.floor(bbox[0]);
+  bbox[1] = Math.floor(bbox[1]);
+  bbox[2] = Math.ceil(bbox[2]);
+  bbox[3] = Math.ceil(bbox[3]);
+}
+
 export default {
   mergeBbox,
   getPointsRect,
   getShapeGroupRect,
+  ceilBbox,
 };

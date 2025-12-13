@@ -1,7 +1,7 @@
 import Node from './Node';
 import { BitmapProps } from '../format';
 import CanvasCache from '../refresh/CanvasCache';
-import { loadImg, LoadImgRes } from '../util/loadImg';
+import { loadImg, LoadImgRes, getCacheImg } from '../util/loadImg';
 import TextureCache from '../refresh/TextureCache';
 import { LayoutData } from '../refresh/layout';
 import { OBJECT_FIT, StyleUnit, VISIBILITY } from '../style/define';
@@ -29,29 +29,41 @@ class Bitmap extends Node {
     this.isPure = true;
     const src = (this._src = props.src || '');
     if (src) {
-      this.contentLoadingNum = 1;
-      loadImg(src).then(res => {
-        this.loader = res;
-        this.contentLoadingNum = 0;
-        // 加载完且已经didMount了，触发刷新，默认第0帧
-        if (res.success) {
-          if (this.isMounted) {
-            const { left, top, right, bottom, width, height } = this.style;
-            if ((left.u === StyleUnit.AUTO || right.u === StyleUnit.AUTO) && width.u === StyleUnit.AUTO
-              || (top.u === StyleUnit.AUTO || bottom.u === StyleUnit.AUTO) && height.u === StyleUnit.AUTO
-            ) {
-              this.refresh(RefreshLevel.REFLOW);
-            }
-            else {
-              this.refresh();
-            }
+      const cb = () => {
+        if (this.isMounted) {
+          const { left, top, right, bottom, width, height } = this.style;
+          if ((left.u === StyleUnit.AUTO || right.u === StyleUnit.AUTO) && width.u === StyleUnit.AUTO
+            || (top.u === StyleUnit.AUTO || bottom.u === StyleUnit.AUTO) && height.u === StyleUnit.AUTO
+          ) {
+            this.refresh(RefreshLevel.REFLOW);
           }
-          if (this.onLoad) {
-            this.onLoad();
+          else {
+            this.refresh();
           }
-          this.emit(LOAD);
         }
-      });
+        if (this.onLoad) {
+          this.onLoad();
+        }
+        this.emit(LOAD);
+      };
+      const cache = getCacheImg(src);
+      if (cache) {
+        if (cache.success) {
+          this.loader = cache;
+          cb();
+        }
+      }
+      else {
+        this.contentLoadingNum = 1;
+        loadImg(src).then(res => {
+          this.loader = res;
+          this.contentLoadingNum = 0;
+          // 加载完且已经didMount了，触发刷新，默认第0帧
+          if (res.success) {
+            cb();
+          }
+        });
+      }
     }
   }
 

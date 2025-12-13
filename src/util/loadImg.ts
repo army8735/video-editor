@@ -31,6 +31,13 @@ function isGif(uint8array: Uint8Array) {
     && uint8array[5] === gif87a[5];
 }
 
+export function getCacheImg(url: string) {
+  const o = HASH[url];
+  if (o.state === State.LOADED) {
+    return o.res;
+  }
+}
+
 export async function loadImg(url: string, options?: RequestInit) {
   let cache = HASH[url];
   // 已加载或正在加载的复用

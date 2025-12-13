@@ -142,20 +142,10 @@ export type DrawData = {
   opacity: number;
   matrix?: Float32Array;
   bbox: Float32Array;
-  coords?: { // 手动传入提前计算好的坐标，tile时复用数据
-    t1: { x: number, y: number },
-    t2: { x: number, y: number },
-    t3: { x: number, y: number },
-    t4: { x: number, y: number },
-  };
   tc?: { x1: number, y1: number, x3: number, y3: number };
   t: WebGLTexture;
-  dx?: number;
+  dx?: number; // bbox计算前偏移，避免创建新bbox垃圾回收，一般是局部汇总时左上原点不是0,0使用
   dy?: number;
-  x1?: number;
-  y1?: number;
-  x2?: number;
-  y2?: number;
 };
 
 // 缓存，避免每次创建，相同长度复用
@@ -186,20 +176,13 @@ export function drawTextureCache(
   const {
     matrix,
     bbox,
-    coords,
     tc,
     t,
     dx = 0,
     dy = 0,
-    x1 = -1,
-    y1 = -1,
-    x2 = 1,
-    y2 = 1,
   } = drawData;
   bindTexture(gl, t, 0);
-  const { t1, t2, t3, t4 } = coords
-    ? offsetCoords(coords, dx, dy)
-    : bbox2Coords(bbox, cx, cy, dx, dy, matrix);
+  const { t1, t2, t3, t4 } = bbox2Coords(bbox, cx, cy, dx, dy, matrix);
   vtPoint[0] = t1.x;
   vtPoint[1] = t1.y;
   vtPoint[2] = t1.w || 1;
@@ -261,17 +244,17 @@ export function drawTextureCache(
     gl.uniform1i(u_texture, 0);
   }
   // clip范围
-  if (uniformValue.u_clip_x1 !== x1
-    || uniformValue.u_clip_y1 !== y1
-    || uniformValue.u_clip_x2 !== x2
-    || uniformValue.u_clip_y2 !== y2) {
-    uniformValue.u_clip_x1 = x1;
-    uniformValue.u_clip_y1 = y1;
-    uniformValue.u_clip_x2 = x2;
-    uniformValue.u_clip_y2 = y2;
-    const u_clip = cacheProgram.uniform.u_clip;
-    gl.uniform4f(u_clip, x1, y1, x2, y2);
-  }
+  // if (uniformValue.u_clip_x1 !== x1
+  //   || uniformValue.u_clip_y1 !== y1
+  //   || uniformValue.u_clip_x2 !== x2
+  //   || uniformValue.u_clip_y2 !== y2) {
+  //   uniformValue.u_clip_x1 = x1;
+  //   uniformValue.u_clip_y1 = y1;
+  //   uniformValue.u_clip_x2 = x2;
+  //   uniformValue.u_clip_y2 = y2;
+  //   const u_clip = cacheProgram.uniform.u_clip;
+  //   gl.uniform4f(u_clip, x1, y1, x2, y2);
+  // }
   // 渲染并销毁
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.deleteBuffer(pointBuffer);
@@ -285,7 +268,7 @@ const vtPoint = new Float32Array(MAX_TEXTURE_IMAGE_UNITS * 12);
 const vtTex = new Float32Array(MAX_TEXTURE_IMAGE_UNITS * 8);
 const vtOpacity = new Float32Array(MAX_TEXTURE_IMAGE_UNITS * 4);
 const vtTexIndex = new Uint16Array(MAX_TEXTURE_IMAGE_UNITS * 4);
-const vtClip = new Float32Array(MAX_TEXTURE_IMAGE_UNITS * 16);
+// const vtClip = new Float32Array(MAX_TEXTURE_IMAGE_UNITS * 16);
 const uArray = new Uint16Array(MAX_TEXTURE_IMAGE_UNITS);
 for (let i = 0; i < MAX_TEXTURE_IMAGE_UNITS; i++) {
   uArray[i] = i;
@@ -318,20 +301,13 @@ function drawPrItem(
       opacity,
       matrix,
       bbox,
-      coords,
       tc,
       t,
       dx = 0,
       dy = 0,
-      x1 = -1,
-      y1 = -1,
-      x2 = 1,
-      y2 = 1,
     } = list[i];
     bindTexture(gl, t, i);
-    const { t1, t2, t3, t4 } = coords
-      ? offsetCoords(coords, dx, dy)
-      : bbox2Coords(bbox, cx, cy, dx, dy, matrix);
+    const { t1, t2, t3, t4 } = bbox2Coords(bbox, cx, cy, dx, dy, matrix);
     vtPoint[i * 12] = t1.x;
     vtPoint[i * 12 + 1] = t1.y;
     vtPoint[i * 12 + 2] = t1.w || 1;
@@ -372,22 +348,22 @@ function drawPrItem(
     vtTexIndex[i * 4 + 1] = i;
     vtTexIndex[i * 4 + 2] = i;
     vtTexIndex[i * 4 + 3] = i;
-    vtClip[i * 16] = x1;
-    vtClip[i * 16 + 1] = y1;
-    vtClip[i * 16 + 2] = x2;
-    vtClip[i * 16 + 3] = y2;
-    vtClip[i * 16 + 4] = x1;
-    vtClip[i * 16 + 5] = y1;
-    vtClip[i * 16 + 6] = x2;
-    vtClip[i * 16 + 7] = y2;
-    vtClip[i * 16 + 8] = x1;
-    vtClip[i * 16 + 9] = y1;
-    vtClip[i * 16 + 10] = x2;
-    vtClip[i * 16 + 11] = y2;
-    vtClip[i * 16 + 12] = x1;
-    vtClip[i * 16 + 13] = y1;
-    vtClip[i * 16 + 14] = x2;
-    vtClip[i * 16 + 15] = y2;
+    // vtClip[i * 16] = x1;
+    // vtClip[i * 16 + 1] = y1;
+    // vtClip[i * 16 + 2] = x2;
+    // vtClip[i * 16 + 3] = y2;
+    // vtClip[i * 16 + 4] = x1;
+    // vtClip[i * 16 + 5] = y1;
+    // vtClip[i * 16 + 6] = x2;
+    // vtClip[i * 16 + 7] = y2;
+    // vtClip[i * 16 + 8] = x1;
+    // vtClip[i * 16 + 9] = y1;
+    // vtClip[i * 16 + 10] = x2;
+    // vtClip[i * 16 + 11] = y2;
+    // vtClip[i * 16 + 12] = x1;
+    // vtClip[i * 16 + 13] = y1;
+    // vtClip[i * 16 + 14] = x2;
+    // vtClip[i * 16 + 15] = y2;
   }
   // 顶点buffer
   const pointBuffer = gl.createBuffer();
@@ -418,12 +394,12 @@ function drawPrItem(
   gl.vertexAttribPointer(a_textureIndex, 1, gl.UNSIGNED_SHORT, false, 0, 0);
   gl.enableVertexAttribArray(a_textureIndex);
   // clip
-  const clipBuffer = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, clipBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, vtClip, gl.STATIC_DRAW);
-  const a_clip = cacheProgram.attrib.a_clip;
-  gl.vertexAttribPointer(a_clip, 4, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(a_clip);
+  // const clipBuffer = gl.createBuffer();
+  // gl.bindBuffer(gl.ARRAY_BUFFER, clipBuffer);
+  // gl.bufferData(gl.ARRAY_BUFFER, vtClip, gl.STATIC_DRAW);
+  // const a_clip = cacheProgram.attrib.a_clip;
+  // gl.vertexAttribPointer(a_clip, 4, gl.FLOAT, false, 0, 0);
+  // gl.enableVertexAttribArray(a_clip);
   // 纹理
   const uniformValue = cacheProgram.uniformValue;
   uArray.forEach(item => {
@@ -827,20 +803,22 @@ function bbox2Coords(
   dx = 0,
   dy = 0,
   matrix?: Float32Array,
+  offsetX = 0, // 应用matrix后的偏移，一般用不到
+  offsetY = 0,
 ) {
   const t = calRectPoints(
-    bbox[0],
-    bbox[1],
-    bbox[2],
-    bbox[3],
+    bbox[0] + dx,
+    bbox[1] + dy,
+    bbox[2] + dx,
+    bbox[3] + dy,
     matrix,
   );
   const { x1, y1, z1, w1, x2, y2, z2, w2, x3, y3, z3, w3, x4, y4, z4, w4 } = t;
-  const cz = Math.max(z1 || 0, z2 || 0, z3 || 0, z4 || 0);
-  const t1 = pointNDC(x1 + dx, y1 + dy, z1 || 0, w1 || 1, cx, cy, cz);
-  const t2 = pointNDC(x2 + dx, y2 + dy, z2 || 0, w2 || 1, cx, cy, cz);
-  const t3 = pointNDC(x3 + dx, y3 + dy, z3 || 0, w3 || 1, cx, cy, cz);
-  const t4 = pointNDC(x4 + dx, y4 + dy, z4 || 0, w4 || 1,  cx, cy, cz);
+  const cz = Math.max(z1 || 0, z2 || 0, z3 || 0, z4 || 0, Math.sqrt(cx * cx + cy * cy));
+  const t1 = pointNDC(x1 + offsetX, y1 + offsetY, z1 || 0, w1 || 1, cx, cy, cz);
+  const t2 = pointNDC(x2 + offsetX, y2 + offsetY, z2 || 0, w2 || 1, cx, cy, cz);
+  const t3 = pointNDC(x3 + offsetX, y3 + offsetY, z3 || 0, w3 || 1, cx, cy, cz);
+  const t4 = pointNDC(x4 + offsetX, y4 + offsetY, z4 || 0, w4 || 1,  cx, cy, cz);
   return { t1, t2, t3, t4 };
 }
 

@@ -16,6 +16,7 @@ import {
 import { ComputedStyle, Style, StyleUnit, VISIBILITY } from '../style/define';
 import { Struct } from '../refresh/struct';
 import { RefreshLevel } from '../refresh/level';
+import { ceilBbox } from '../math/bbox';
 import {
   assignMatrix,
   calRectPoints,
@@ -391,7 +392,6 @@ class Node extends Event {
     let optimize = true;
     if (
       lv >= RefreshLevel.REFLOW ||
-      lv & RefreshLevel.PERSPECTIVE_SELF ||
       (lv & RefreshLevel.SCALE_X && !computedStyle.scaleX) || // 优化计算scale不能为0，无法计算倍数差
       (lv & RefreshLevel.SCALE_Y && !computedStyle.scaleY) ||
       (lv & RefreshLevel.ROTATE_Z && (computedStyle.rotateX || computedStyle.rotateY || computedStyle.skewX || computedStyle.skewY)) ||
@@ -475,9 +475,9 @@ class Node extends Event {
       computedStyle.transformOrigin = tfo as [number, number];
       // 一般走这里，特殊将left/top和translate合并一起加到matrix上，这样渲染视为[0, 0]开始
       computedStyle.translateX = calSize(style.translateX, this.computedStyle.width);
-      const tx = transform[12] = computedStyle.left + computedStyle.translateX;
+      transform[12] = computedStyle.left + computedStyle.translateX;
       computedStyle.translateY = calSize(style.translateY, this.computedStyle.height);
-      const ty = transform[13] = computedStyle.top + computedStyle.translateY;
+      transform[13] = computedStyle.top + computedStyle.translateY;
       computedStyle.translateZ = calSize(style.translateZ, this.computedStyle.width);
       transform[14] = computedStyle.translateZ;
       const rotateX = style.rotateX ? style.rotateX.v : 0;
@@ -551,19 +551,13 @@ class Node extends Event {
         }
       }
       let t = calMatrixByOrigin(transform, tfo[0], tfo[1]);
-      // 特殊的相对自身的3d透视
-      computedStyle.perspectiveSelf = calSize(style.perspectiveSelf, this.computedStyle.width);
-      if (computedStyle.perspectiveSelf >= 1) {
-        const pm = calPerspectiveMatrix(computedStyle.perspectiveSelf, tfo[0] + tx, tfo[1] + ty);
-        t = multiply(pm, t);
-      }
       assignMatrix(matrix, t);
     }
   }
 
   // 和matrix计算很像，但没有特殊优化，同样影响matrixWorld
   calPerspective() {
-    const { style, computedStyle } = this;
+    const { style, computedStyle, transform } = this;
     if (this.hasCacheMw || !this.localMwId) {
       this.hasCacheMw = false;
       this.localMwId++;
@@ -573,7 +567,6 @@ class Node extends Event {
     });
     computedStyle.perspectiveOrigin = pfo as [number, number];
     computedStyle.perspective = calSize(style.perspective, this.computedStyle.width);
-    computedStyle.perspectiveSelf = calSize(style.perspectiveSelf, this.computedStyle.width);
     if (computedStyle.perspective >= 1) {
       this.perspectiveMatrix = calPerspectiveMatrix(computedStyle.perspective, pfo[0], pfo[1]);
     }
@@ -819,7 +812,7 @@ class Node extends Event {
     res.saturate = style.saturate.v + '%';
     res.brightness = style.brightness.v + '%';
     res.contrast = style.contrast.v + '%';
-    res.overflow = ['visible', 'hidden', 'clip'][style.overflow.v];
+    res.overflow = ['visible', 'hidden'][style.overflow.v];
     return res as JStyle;
   }
 
@@ -1533,10 +1526,7 @@ class Node extends Event {
     let res = this._bboxInt;
     if (!res) {
       res = this._bboxInt = (this._bbox || this.bbox).slice(0);
-      res[0] = Math.floor(res[0]);
-      res[1] = Math.floor(res[1]);
-      res[2] = Math.ceil(res[2]);
-      res[3] = Math.ceil(res[3]);
+      ceilBbox(res);
     }
     return res;
   }
@@ -1545,10 +1535,7 @@ class Node extends Event {
     let res = this._filterBboxInt;
     if (!res) {
       res = this._filterBboxInt = (this._filterBbox || this.filterBbox).slice(0);
-      res[0] = Math.floor(res[0]);
-      res[1] = Math.floor(res[1]);
-      res[2] = Math.ceil(res[2]);
-      res[3] = Math.ceil(res[3]);
+      ceilBbox(res);
     }
     return res;
   }
